@@ -4,6 +4,8 @@
 
 > Hadir (حاضر) — school attendance for principals — a fully RTL Arabic mobile-first web app.
 > Employees, attendance, monthly PDF reports and WhatsApp thank-you messages in one place.
+>
+> **🌐 Live app: https://ahmedalmeligy.github.io/principal-attendance-app/**
 
 ## Screenshots
 
