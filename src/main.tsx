@@ -20,6 +20,7 @@ const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 import { AppProvider } from "@/providers/app-provider";
 import { BottomNav } from "@/components/app/BottomNav";
 import { BiometricGate } from "@/components/BiometricGate";
+import { SwipeNavigator } from "@/components/app/SwipeNavigator";
 import { registerConvexClient } from "@/lib/sync-client";
 import { TermsGate } from "@/components/TermsGate";
 import { ThemeProvider } from "next-themes";
@@ -154,10 +155,10 @@ function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <AppProvider>
       <BiometricGate>
-        <div className="min-h-screen">
+        <SwipeNavigator>
           {children}
           <BottomNav />
-        </div>
+        </SwipeNavigator>
       </BiometricGate>
     </AppProvider>
   );
