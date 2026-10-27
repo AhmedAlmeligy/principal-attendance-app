@@ -1,5 +1,9 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
+
+/** Public assets must be addressed through the deploy base path so the same
+ * reference works at "/" in dev and at "/<repo>/" on GitHub Pages. */
+const logoSrc = `${import.meta.env.BASE_URL}logo.svg`;
 import { getMeta, setMeta } from "@/lib/local-db";
 
 /** Bump this to re-prompt all users on next launch. */
@@ -150,7 +154,7 @@ export function TermsGate({ children }: { children: ReactNode }) {
       <div className="relative z-10 flex max-h-[92dvh] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-border/40 bg-card shadow-2xl">
         <div className="px-5 pt-5 text-center">
           <img
-            src="/logo.svg"
+            src={logoSrc}
             alt="حاضِر"
             className="mx-auto size-14 rounded-2xl"
           />

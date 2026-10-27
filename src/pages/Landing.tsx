@@ -10,6 +10,10 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router";
 
+/** Public assets must be addressed through the deploy base path so the same
+ * reference works at "/" in dev and at "/<repo>/" on GitHub Pages. */
+const logoSrc = `${import.meta.env.BASE_URL}logo.svg`;
+
 const FEATURES = [
   {
     icon: CalendarCheck2,
@@ -71,7 +75,7 @@ export default function Landing() {
         <header className="glass-strong rounded-3xl p-6 text-center">
           <div className="glass-chip mx-auto flex size-16 items-center justify-center rounded-3xl">
             <img
-              src="/logo.svg"
+              src={logoSrc}
               alt="حاضِر"
               className="size-10 rounded-2xl"
             />
