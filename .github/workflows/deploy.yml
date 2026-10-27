@@ -1,0 +1,63 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Build
+        run: bun run build
+        env:
+          # Optional: set a repository variable VITE_CONVEX_URL to connect the
+          # deployed site to your Convex backend. Without it the app runs
+          # local-only (data stays on the device).
+          VITE_CONVEX_URL: ${{ vars.VITE_CONVEX_URL }}
+      - name: Configure for GitHub Pages sub-path
+        run: |
+          # SPA deep links: GitHub Pages serves 404.html for unknown paths.
+          cp dist/index.html dist/404.html
+          # The manifest lives in public/ and is served verbatim, so point its
+          # start_url, scope and icons at /<repo>/ for the installed PWA.
+          node -e '
+            const fs = require("fs");
+            const p = "dist/manifest.webmanifest";
+            const m = JSON.parse(fs.readFileSync(p, "utf8"));
+            const b = "/" + process.env.GITHUB_REPOSITORY.split("/")[1] + "/";
+            m.start_url = b;
+            m.scope = b;
+            m.icons = m.icons.map((i) => ({ ...i, src: b + i.src.replace(/^\//, "") }));
+            fs.writeFileSync(p, JSON.stringify(m, null, 2));
+          '
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
