@@ -21,6 +21,12 @@
 | --- | --- |
 | ![Dashboard — desktop](screenshots/dashboard-desktop.png) | ![Dashboard — phone](screenshots/dashboard-mobile.png) |
 
+## Install on Android (APK)
+
+Download **[hadir.apk](https://ahmedalmeligy.github.io/principal-attendance-app/hadir.apk)** on your phone and open it to install (allow "install from unknown sources" when prompted — it's a normal self-signed release build). The same link works for sharing: send it to anyone and they can install the app directly.
+
+> The APK is a thin Android shell around the live site, so it needs an internet connection to load. Each phone keeps its own data. To rebuild or update it, open `android/` in Android Studio and run `gradlew assembleRelease` (keep your own `keystore.properties` + signing key next to it — future versions must be signed with the same key).
+
 ## Overview
 
 This project uses the following tech stack:

@@ -1,0 +1,17 @@
+# Build outputs
+build/
+.gradle/
+*.apk
+!../public/hadir.apk
+
+# Machine-local SDK location
+local.properties
+
+# Signing secrets — never commit these; keep hadir-release.jks backed up
+keystore.properties
+*.jks
+*.keystore
+
+# IDE
+.idea/
+*.iml

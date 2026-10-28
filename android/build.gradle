@@ -1,0 +1,4 @@
+// Root build file — Android Studio project for the Hadir PWA shell.
+plugins {
+    id 'com.android.application' version '8.5.2' apply false
+}
