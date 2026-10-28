@@ -12,7 +12,7 @@ import {
   formatLateMinutes,
 } from "@/lib/reports";
 import { STATUS_LABELS } from "@/lib/types";
-import { normalizePhone } from "@/lib/whatsapp";
+import { formatPhoneDisplay, normalizePhone } from "@/lib/whatsapp";
 import { cn } from "@/lib/utils";
 import { Phone, Pencil } from "lucide-react";
 import { ChevronLeft, ChevronRight, Heart } from "lucide-react";
@@ -75,7 +75,7 @@ export default function EmployeeDetail() {
       <section className="glass-strong space-y-3 rounded-3xl p-4">
         <div className="glass-chip flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm" dir="ltr">
           <Phone className="size-4 text-primary" />
-          <span className="font-semibold">{employee.phone}</span>
+          <span className="font-semibold">{formatPhoneDisplay(employee.phone)}</span>
         </div>
         {employee.notes && (
           <p className="text-xs leading-5 text-muted-foreground">

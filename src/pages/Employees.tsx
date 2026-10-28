@@ -19,8 +19,18 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useApp } from "@/providers/app-provider";
+import {
+  ARAB_COUNTRIES,
+  DEFAULT_COUNTRY_DIAL,
+  OTHER_COUNTRIES,
+} from "@/lib/countries";
 import { EMPLOYEE_CATEGORIES } from "@/lib/types";
-import { isValidPhone } from "@/lib/whatsapp";
+import {
+  combinePhone,
+  formatPhoneDisplay,
+  isValidPhone,
+  splitPhone,
+} from "@/lib/whatsapp";
 import { cn } from "@/lib/utils";
 import {
   ChevronLeft,
@@ -38,6 +48,9 @@ import { toast } from "sonner";
 interface FormState {
   id?: string;
   name: string;
+  /** Country dial code selected in the picker (e.g. "968"). */
+  dial: string;
+  /** National digits as typed, without the dial code. */
   phone: string;
   position: string;
   category: string;
@@ -46,6 +59,7 @@ interface FormState {
 
 const EMPTY_FORM: FormState = {
   name: "",
+  dial: DEFAULT_COUNTRY_DIAL,
   phone: "",
   position: "",
   category: EMPLOYEE_CATEGORIES[0].value,
@@ -79,10 +93,12 @@ export default function Employees() {
   const openEdit = (id: string) => {
     const e = employees.find((x) => x.id === id);
     if (!e) return;
+    const { dial, local } = splitPhone(e.phone);
     setForm({
       id: e.id,
       name: e.name,
-      phone: e.phone,
+      dial,
+      phone: local,
       position: e.position,
       category: e.category,
       notes: e.notes ?? "",
@@ -99,8 +115,9 @@ export default function Employees() {
       toast.error("رقم الهاتف مطلوب");
       return;
     }
-    if (!isValidPhone(form.phone)) {
-      toast.error("رقم هاتف غير صالح (مثال: 07701234567)");
+    const phone = combinePhone(form.dial, form.phone);
+    if (!isValidPhone(phone)) {
+      toast.error("رقم هاتف غير صالح — راجع الدولة وعدد أرقام الرقم");
       return;
     }
     setSaving(true);
@@ -109,7 +126,7 @@ export default function Employees() {
         await updateEmployee({
           id: form.id,
           name: form.name.trim(),
-          phone: form.phone.trim(),
+          phone,
           position: form.position.trim() || "موظف",
           category: form.category,
           notes: form.notes.trim() || undefined,
@@ -118,7 +135,7 @@ export default function Employees() {
       } else {
         await addEmployee({
           name: form.name.trim(),
-          phone: form.phone.trim(),
+          phone,
           position: form.position.trim() || "موظف",
           category: form.category,
           notes: form.notes.trim() || undefined,
@@ -224,7 +241,7 @@ export default function Employees() {
                   </p>
                   <p className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground" dir="ltr">
                     <Phone className="size-3" />
-                    {e.phone}
+                    {formatPhoneDisplay(e.phone)}
                   </p>
                 </div>
                 <div className="flex shrink-0 gap-1">
@@ -292,15 +309,55 @@ export default function Employees() {
                 />
               </div>
               <div className="space-y-1.5">
+                <Label>الدولة *</Label>
+                <select
+                  value={form.dial}
+                  onChange={(e) => setForm({ ...form, dial: e.target.value })}
+                  className="glass-chip w-full rounded-xl px-3 py-2.5 text-sm font-semibold outline-none"
+                >
+                  <optgroup label="الدول العربية">
+                    {ARAB_COUNTRIES.map((c) => (
+                      <option key={c.code} value={c.dial}>
+                        {c.flag} {c.name} ({`+${c.dial}`})
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="دول أخرى">
+                    {OTHER_COUNTRIES.map((c, i) => (
+                      <option
+                        key={`${c.code}-${i}`}
+                        value={c.dial}
+                      >
+                        {c.flag} {c.name} ({`+${c.dial}`})
+                      </option>
+                    ))}
+                  </optgroup>
+                </select>
+              </div>
+              <div className="space-y-1.5">
                 <Label>رقم الهاتف (واتساب) *</Label>
-                <Input
-                  value={form.phone}
-                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                  placeholder="07701234567"
-                  inputMode="tel"
+                <div
                   dir="ltr"
-                  className="glass-chip rounded-xl text-right"
-                />
+                  className="glass-chip flex items-center gap-2 rounded-xl px-3 py-2.5"
+                >
+                  <span className="shrink-0 text-sm font-bold text-primary">
+                    {`+${form.dial}`}
+                  </span>
+                  <span className="h-5 w-px shrink-0 bg-border" aria-hidden />
+                  <Input
+                    value={form.phone}
+                    onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                    placeholder="90010233"
+                    inputMode="tel"
+                    dir="ltr"
+                    aria-label="رقم الهاتف بدون رمز الدولة"
+                    className="h-auto min-w-0 flex-1 border-0 bg-transparent p-0 shadow-none focus-visible:ring-0"
+                  />
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  اختر الدولة أولاً ثم اكتب الرقم فقط بدون رمز الدولة وبدون
+                  الصفر الأول
+                </p>
               </div>
               <div className="space-y-1.5">
                 <Label>المنصب الوظيفي</Label>

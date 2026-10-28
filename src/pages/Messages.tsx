@@ -3,7 +3,11 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useApp } from "@/providers/app-provider";
 import { THANK_YOU_PRESETS } from "@/lib/types";
-import { openWhatsApp, isValidPhone } from "@/lib/whatsapp";
+import {
+  formatPhoneDisplay,
+  isValidPhone,
+  openWhatsApp,
+} from "@/lib/whatsapp";
 import { cn } from "@/lib/utils";
 import { Heart, Send } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -81,7 +85,7 @@ export default function Messages() {
           <div className="glass-chip flex items-center justify-between rounded-xl px-3 py-2.5 text-sm">
             <span className="text-muted-foreground">رقم الهاتف</span>
             <span className="font-bold" dir="ltr">
-              {employee.phone}
+              {formatPhoneDisplay(employee.phone)}
             </span>
           </div>
         )}

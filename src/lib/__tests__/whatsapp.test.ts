@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   buildWhatsAppLink,
+  combinePhone,
+  formatPhoneDisplay,
   isValidPhone,
   normalizePhone,
+  splitPhone,
 } from "../whatsapp";
 import type { Employee } from "../types";
 
@@ -59,6 +62,64 @@ describe("isValidPhone", () => {
     expect(isValidPhone("1234567890123456")).toBe(false); // 16 digits
     expect(isValidPhone("")).toBe(false);
     expect(isValidPhone("not-a-number")).toBe(false);
+  });
+});
+
+describe("splitPhone", () => {
+  it("splits a stored international number into dial code + local part", () => {
+    expect(splitPhone("96890010233")).toEqual({
+      dial: "968",
+      local: "90010233",
+    });
+    expect(splitPhone("+201012345678")).toEqual({
+      dial: "20",
+      local: "1012345678",
+    });
+    expect(splitPhone("00966501234567")).toEqual({
+      dial: "966",
+      local: "501234567",
+    });
+  });
+
+  it("keeps historic local 0-numbers on the default country", () => {
+    expect(splitPhone("07701234567")).toEqual({
+      dial: "964",
+      local: "07701234567",
+    });
+  });
+
+  it("falls back to the default country for empty values", () => {
+    expect(splitPhone("")).toEqual({ dial: "964", local: "" });
+  });
+});
+
+describe("combinePhone", () => {
+  it("prepends the dial code and drops national leading zeros", () => {
+    expect(combinePhone("968", "90010233")).toBe("96890010233");
+    expect(combinePhone("20", "01012345678")).toBe("201012345678");
+    expect(combinePhone("964", "07701234567")).toBe("9647701234567");
+  });
+
+  it("ignores separators typed by the user", () => {
+    expect(combinePhone("966", "50 123-4567")).toBe("966501234567");
+  });
+
+  it("produces a valid WhatsApp number from a picked country + local digits", () => {
+    const phone = combinePhone("968", "90010233");
+    expect(isValidPhone(phone)).toBe(true);
+    expect(normalizePhone(phone)).toBe("96890010233");
+  });
+});
+
+describe("formatPhoneDisplay", () => {
+  it("renders valid numbers with a leading +", () => {
+    expect(formatPhoneDisplay("07701234567")).toBe("+9647701234567");
+    expect(formatPhoneDisplay("96890010233")).toBe("+96890010233");
+  });
+
+  it("keeps unusable values as typed", () => {
+    expect(formatPhoneDisplay("123")).toBe("123");
+    expect(formatPhoneDisplay("")).toBe("");
   });
 });
 
