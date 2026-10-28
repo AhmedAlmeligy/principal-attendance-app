@@ -1,8 +1,9 @@
 import { Button } from "@/components/ui/button";
+import { LogoAvatar } from "@/components/app/LogoAvatar";
 import { useApp } from "@/providers/app-provider";
 import { cn } from "@/lib/utils";
 import { syncNow } from "@/lib/sync-client";
-import { CloudCheck, CloudOff, Loader2, RefreshCw, UserRound } from "lucide-react";
+import { CloudCheck, CloudOff, Loader2, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router";
 
@@ -97,7 +98,7 @@ export function AppHeader({
               className="size-9 rounded-full object-cover"
             />
           ) : (
-            <UserRound className="size-4" />
+            <LogoAvatar className="size-9" />
           )}
         </Button>
       </div>

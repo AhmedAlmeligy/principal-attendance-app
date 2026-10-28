@@ -13,6 +13,69 @@ import { getMeta, setMeta, deleteMeta } from "./local-db";
 const CREDENTIAL_KEY = "biometric.credentialId";
 const LAST_UNLOCK_KEY = "biometric.lastUnlockAt";
 
+// ---------- Android WebView bridge ----------
+// The shipped APK renders this app inside a WebView, which has no WebAuthn.
+// MainActivity injects an `AndroidAuth` object (wired to Android's native
+// BiometricPrompt) before the page loads; when present it takes over
+// enrollment and verification, so the lock works identically in the APK.
+
+interface AndroidAuthBridge {
+  isAvailable(): boolean;
+  verify(requestId: string): void;
+}
+
+type NativeVerifyResult = "ok" | "cancelled" | "failed";
+
+declare global {
+  interface Window {
+    AndroidAuth?: AndroidAuthBridge;
+    __hadirBiometricResult?: (requestId: string, result: string) => void;
+  }
+}
+
+const nativePending = new Map<string, (r: NativeVerifyResult) => void>();
+
+/** The injected bridge when running inside the Android app, else undefined. */
+export function getAndroidAuthBridge(): AndroidAuthBridge | undefined {
+  if (typeof window === "undefined") return undefined;
+  const bridge = window.AndroidAuth;
+  if (!bridge || typeof bridge.verify !== "function") return undefined;
+  // The native side answers through evaluateJavascript exactly once per id.
+  window.__hadirBiometricResult = (requestId, result) => {
+    const resolve = nativePending.get(requestId);
+    if (!resolve) return;
+    resolve(result === "ok" || result === "cancelled" ? result : "failed");
+  };
+  return bridge;
+}
+
+/** Ask the native BiometricPrompt to verify; resolves when it answers. */
+function nativeVerify(bridge: AndroidAuthBridge): Promise<NativeVerifyResult> {
+  const requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return new Promise((resolve) => {
+    let done = false;
+    const settle = (result: NativeVerifyResult) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      nativePending.delete(requestId);
+      resolve(result);
+    };
+    // Safety net: the OS prompt auto-dismisses, but never hang the gate.
+    const timer = setTimeout(() => settle("failed"), 90_000);
+    nativePending.set(requestId, settle);
+    try {
+      bridge.verify(requestId);
+    } catch (err) {
+      console.error("[biometric] native verify failed:", err);
+      settle("failed");
+    }
+  });
+}
+
+/** Enrollment marker stored when the native path is used. */
+const ANDROID_CREDENTIAL = "android-native";
+
 // Session unlock flag (module scope — survives route remounts, resets on a
 // full page reload, which is exactly the lifecycle an app lock needs).
 let unlockedThisSession = false;
@@ -64,8 +127,10 @@ export function toBase64Url(bytes: Uint8Array): string {
 
 /** True when this browser/device exposes a platform biometric authenticator. */
 export function isBiometricSupported(): boolean {
+  if (typeof window === "undefined") return false;
+  // Inside the Android app the native bridge is authoritative.
+  if (getAndroidAuthBridge()) return true;
   return (
-    typeof window !== "undefined" &&
     typeof window.PublicKeyCredential !== "undefined" &&
     typeof navigator.credentials?.create === "function" &&
     // Not on a plain http origin — WebAuthn requires a secure context.
@@ -79,6 +144,14 @@ export function isBiometricSupported(): boolean {
  * that don't implement the conditional-mediation availability probe.
  */
 export async function isBiometricAvailable(): Promise<boolean> {
+  const bridge = getAndroidAuthBridge();
+  if (bridge) {
+    try {
+      return bridge.isAvailable();
+    } catch {
+      return false;
+    }
+  }
   if (!isBiometricSupported()) return false;
   try {
     const p = window.PublicKeyCredential as unknown as {
@@ -103,6 +176,23 @@ export async function getStoredCredentialId(): Promise<string | undefined> {
 export async function enrollBiometric(
   displayName: string,
 ): Promise<BiometricEnrollResult> {
+  // Android app path: the OS prompt itself is the enrollment scan.
+  const bridge = getAndroidAuthBridge();
+  if (bridge) {
+    const result = await nativeVerify(bridge);
+    if (result === "ok") {
+      await setMeta(CREDENTIAL_KEY, `${ANDROID_CREDENTIAL}:${Date.now()}`);
+      markUnlocked();
+      return { ok: true };
+    }
+    return result === "cancelled"
+      ? { ok: false, reason: "cancelled", message: "تم إلغاء التسجيل" }
+      : {
+          ok: false,
+          reason: "failed",
+          message: "لم يتم التحقق ببصمتك — حاول مجدداً",
+        };
+  }
   if (!isBiometricSupported()) {
     return {
       ok: false,
@@ -169,6 +259,23 @@ export async function unlockWithBiometric(): Promise<BiometricUnlockResult> {
   const credId = await getStoredCredentialId();
   if (!credId) {
     return { ok: false, reason: "missing", message: "القياس الحيوي غير مُفعّل" };
+  }
+  // Android app path: native BiometricPrompt instead of a WebAuthn assertion.
+  const bridge = getAndroidAuthBridge();
+  if (bridge) {
+    const result = await nativeVerify(bridge);
+    if (result === "ok") {
+      await setMeta(LAST_UNLOCK_KEY, Date.now());
+      markUnlocked();
+      return { ok: true };
+    }
+    return result === "cancelled"
+      ? { ok: false, reason: "cancelled", message: "تم إلغاء التحقق — حاول مجدداً" }
+      : {
+          ok: false,
+          reason: "failed",
+          message: "فشل التحقق بالبصمة",
+        };
   }
   try {
     const assertion = (await navigator.credentials.get({

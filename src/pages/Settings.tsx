@@ -1,4 +1,5 @@
 import { AppHeader } from "@/components/app/AppHeader";
+import { LogoAvatar } from "@/components/app/LogoAvatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,7 +19,6 @@ import {
   ShieldCheck,
   Sun,
   Trash2,
-  UserRound,
 } from "lucide-react";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { toast } from "sonner";
@@ -156,7 +156,7 @@ function ProfileCard() {
         >
           <span className="glass-chip flex size-16 items-center justify-center overflow-hidden rounded-full">
             {isDefaultPhoto ? (
-              <UserRound className="size-7 text-muted-foreground" />
+              <LogoAvatar className="size-16" />
             ) : (
               <img
                 src={settings.principalPhoto}
