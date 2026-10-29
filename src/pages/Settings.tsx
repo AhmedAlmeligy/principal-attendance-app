@@ -6,6 +6,10 @@ import { Label } from "@/components/ui/label";
 import { useApp } from "@/providers/app-provider";
 import { useAuth } from "@/hooks/use-auth";
 import { useBiometric } from "@/hooks/use-biometric";
+import { api } from "@/convex/_generated/api";
+import { QueryFallback } from "@/providers/account-gate";
+import { useQuery } from "convex/react";
+import { Link } from "react-router";
 import { useTheme } from "next-themes";
 import { fileToAvatarDataUrl } from "@/lib/image";
 import { isValidTime } from "@/lib/datetime";
@@ -13,6 +17,7 @@ import { cn } from "@/lib/utils";
 import {
   BarChart3,
   Camera,
+  ChevronLeft,
   Fingerprint,
   Loader2,
   Moon,
@@ -31,6 +36,40 @@ import {
 } from "@/lib/analytics";
 
 const DAY_LABELS = ["أحد", "إثنين", "ثلاثاء", "أربعاء", "خميس", "جمعة", "سبت"];
+
+/** Entry to the admin console — only rendered for the admin account. */
+function AdminLink() {
+  return (
+    <QueryFallback fallback={null}>
+      <AdminLinkInner />
+    </QueryFallback>
+  );
+}
+
+function AdminLinkInner() {
+  const status = useQuery(api.devices.status);
+  if (!status?.isAdmin) return null;
+  return (
+    <div className="mt-3">
+      <Link to="/app/admin" className="block">
+        <section className="glass flex items-center justify-between rounded-3xl p-4">
+          <div className="flex items-center gap-3">
+            <span className="glass-chip flex size-10 shrink-0 items-center justify-center rounded-xl">
+              <ShieldCheck className="size-5 text-primary" />
+            </span>
+            <div className="min-w-0 text-right">
+              <p className="text-sm font-bold">لوحة الإدارة</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                حسابات الأجهزة، الإيقاف والاستعادة، وإغلاق التطبيق
+              </p>
+            </div>
+          </div>
+          <ChevronLeft className="size-4 shrink-0 text-muted-foreground" />
+        </section>
+      </Link>
+    </div>
+  );
+}
 
 function BiometricCard() {
   const { supported, available, enabled, enroll, disable } = useBiometric();
@@ -414,6 +453,8 @@ export default function Settings() {
       <div className="mt-3">
         <AnalyticsCard />
       </div>
+
+      <AdminLink />
 
       <div className="mt-3">
         <ThemeSwitcher />

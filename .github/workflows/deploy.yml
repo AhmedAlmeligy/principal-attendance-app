@@ -31,8 +31,10 @@ jobs:
           # deployed site to your Convex backend. Without it the app runs
           # local-only (data stays on the device).
           VITE_CONVEX_URL: ${{ vars.VITE_CONVEX_URL }}
-          # Optional: PostHog analytics. Without the key analytics stays off.
-          VITE_POSTHOG_KEY: ${{ vars.VITE_POSTHOG_KEY }}
+          # PostHog analytics. A repository variable wins when set; otherwise
+          # fall back to the project's publishable browser key (phc_ keys are
+          # designed to ship in client bundles — they are not secrets).
+          VITE_POSTHOG_KEY: ${{ vars.VITE_POSTHOG_KEY || 'phc_ydG2BPo4tpzg5Lmk3pz7jPUzwZLWUsS2qy37J5FyTATQ' }}
           VITE_POSTHOG_HOST: ${{ vars.VITE_POSTHOG_HOST }}
       - name: Configure for GitHub Pages sub-path
         run: |

@@ -21,11 +21,13 @@ const EmployeeDetail = lazy(() => import("./pages/EmployeeDetail.tsx"));
 const Reports = lazy(() => import("./pages/Reports.tsx"));
 const Messages = lazy(() => import("./pages/Messages.tsx"));
 const Settings = lazy(() => import("./pages/Settings.tsx"));
+const Admin = lazy(() => import("./pages/Admin.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
 import { AppProvider } from "@/providers/app-provider";
 import { BottomNav, TABS } from "@/components/app/BottomNav";
 import { BiometricGate } from "@/components/BiometricGate";
+import { AccountGate } from "@/providers/account-gate";
 import { SwipeNavigator } from "@/components/app/SwipeNavigator";
 import { registerConvexClient } from "@/lib/sync-client";
 import { startAnalytics, trackPageview } from "@/lib/analytics";
@@ -211,22 +213,24 @@ function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <AppProvider>
-      <BiometricGate>
-        <SwipeNavigator>
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.div
-              key={pathname}
-              initial={{ opacity: 0, x: forward ? -26 : 26 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2, ease: "easeOut" }}
-            >
-              {children}
-            </motion.div>
-          </AnimatePresence>
-          <BottomNav />
-        </SwipeNavigator>
-      </BiometricGate>
+      <AccountGate>
+        <BiometricGate>
+          <SwipeNavigator>
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                key={pathname}
+                initial={{ opacity: 0, x: forward ? -26 : 26 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2, ease: "easeOut" }}
+              >
+                {children}
+              </motion.div>
+            </AnimatePresence>
+            <BottomNav />
+          </SwipeNavigator>
+        </BiometricGate>
+      </AccountGate>
     </AppProvider>
   );
 }
@@ -301,6 +305,14 @@ createRoot(document.getElementById("root")!).render(
                 element={
                   <AppLayout>
                     <Settings />
+                  </AppLayout>
+                }
+              />
+              <Route
+                path="/app/admin"
+                element={
+                  <AppLayout>
+                    <Admin />
                   </AppLayout>
                 }
               />

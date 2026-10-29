@@ -12,8 +12,21 @@ const schema = defineSchema({
     email: v.optional(v.string()),
     emailVerificationTime: v.optional(v.number()),
     isAnonymous: v.optional(v.boolean()),
-    role: v.optional(v.string()),
-  }).index("email", ["email"]),
+    role: v.optional(v.string()), // "admin" | "member"
+    deviceId: v.optional(v.string()), // stable per-browser tombstone
+    deviceName: v.optional(v.string()),
+    lastSeenAt: v.optional(v.number()),
+    revoked: v.optional(v.boolean()),
+  })
+    .index("email", ["email"])
+    .index("by_deviceId", ["deviceId"]),
+
+  // Single-row feature flags controlled from the admin console.
+  systemFlags: defineTable({
+    key: v.string(), // always "main"
+    appDisabled: v.boolean(), // global kill switch
+    message: v.optional(v.string()),
+  }).index("by_key", ["key"]),
 
   employees: defineTable({
     name: v.string(),
