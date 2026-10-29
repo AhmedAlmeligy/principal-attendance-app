@@ -323,3 +323,16 @@ When using convex, make sure:
 - This includes importing generated files like `@/convex/_generated/server`, `@/convex/_generated/api`
 - Remember to import functions like useQuery, useMutation, useAction, etc. from `convex/react`
 - NEVER have return type validators.
+
+## License
+
+The app is **free to download and use** — for schools, businesses and
+individuals alike, at no cost.
+
+It is **not** free to sell. Reselling the app, charging a fee to download or
+use it, offering it as a paid hosted service, or bundling it into a paid
+product requires the author's **prior written permission** — contact
+[@AhmedAlmeligy](https://github.com/AhmedAlmeligy) first and we agree terms
+before anything else.
+
+See [LICENSE](LICENSE) for the full terms.

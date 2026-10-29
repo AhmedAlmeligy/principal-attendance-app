@@ -74,5 +74,7 @@ By participating, you agree to uphold it.
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the
-[MIT License](LICENSE) that covers this project.
+The project is free to use, but **selling it (or anything built from it)
+requires the author's prior written permission** — see the
+[Hadir Application License](LICENSE). By contributing, you agree that your
+contributions will be distributed under that license.

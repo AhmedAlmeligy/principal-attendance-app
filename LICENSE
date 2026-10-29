@@ -1,17 +1,75 @@
-MIT License
-
+Hadir (حاضر) Application License
 Copyright (c) 2026 Ahmed Almeligy
+https://github.com/AhmedAlmeligy/principal-attendance-app
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+Preamble
+--------
+The Hadir attendance application (the "Software") is free software. "Free"
+means free of charge: anyone may download, install and use it. It does NOT
+mean free to commercialise. The author keeps the right to agree a deal with
+anyone who wants to sell the Software or make money from it.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
 
+1. GRANT OF RIGHTS
+------------------
+Subject to the terms in this license, you are granted a worldwide,
+royalty-free, non-exclusive, non-transferable license to:
+
+  a. use the Software for personal, educational, non-profit, or internal
+     business purposes, including use inside a school, company or other
+     organisation;
+  b. copy and share unmodified copies of the Software (including the APK and
+     the source code) free of charge;
+  c. study, modify, and create derivative works of the Software for your own
+     use, subject to Section 3.
+
+
+2. COMMERCIAL USE REQUIRES PERMISSION FIRST
+-------------------------------------------
+You may NOT do any of the following without the copyright holder's prior
+written permission:
+
+  a. sell, resell, rent, lease, sublicense, or otherwise transfer the
+     Software or any modified version of it for money or other consideration;
+  b. charge any fee for downloading, accessing, installing, hosting, or using
+     the Software, including paid app-store distribution or a paid hosted /
+     web version of it;
+  c. bundle the Software, in whole or in substantial part, into a product or
+     service that is sold, subscription-based, or otherwise monetised;
+  d. use the Software, or the names "حاضر" or "Hadir", in a commercial
+     offering, advertisement, or paid client engagement.
+
+Permission is never automatic or implied. Before doing anything covered by
+this Section you must contact the copyright holder, describe exactly what you
+intend to do, and agree terms in writing. In short: you must talk to me first
+and we make a deal before anything else.
+
+How to contact: open an issue on the repository, or reach the author through
+https://github.com/AhmedAlmeligy
+
+
+3. REDISTRIBUTION OF FREE COPIES
+--------------------------------
+When you share the Software free of charge (unmodified, or with your own
+modifications), you must:
+
+  a. keep this license and the original copyright notice intact and included
+     with every copy;
+  b. clearly state that your version is not the original and that the author
+     does not endorse you, your version, or your activities;
+  c. not sell it, not attach any fee, and not impose any charge that is
+     primarily for obtaining the Software (see Section 2).
+
+
+4. CONTRIBUTIONS
+----------------
+By submitting a contribution to the project (pull request, patch, or issue
+content intended for inclusion), you agree that it may be distributed under
+this license, and you retain copyright of your own contribution.
+
+
+5. NO WARRANTY
+--------------
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -19,3 +77,11 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+
+6. TERMINATION
+--------------
+Your rights under this license terminate automatically if you breach it.
+Those rights may only be restored by obtaining written permission from the
+copyright holder — in practice, by contacting the author and agreeing terms.
+Section 5 survives termination.
