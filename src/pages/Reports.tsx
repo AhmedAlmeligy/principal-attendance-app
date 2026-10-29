@@ -3,8 +3,6 @@ import { Button } from "@/components/ui/button";
 import { useApp } from "@/providers/app-provider";
 import {
   arabicMonthName,
-  formatNumericDate,
-  todayKey,
 } from "@/lib/datetime";
 import {
   buildMonthlyReport,
@@ -13,10 +11,12 @@ import {
   EMPTY_STATS,
 } from "@/lib/reports";
 import { STATUS_LABELS } from "@/lib/types";
+import { captureEvent } from "@/lib/analytics";
+import { getAndroidFiles } from "@/lib/android-bridge";
 import {
   ChevronLeft,
   ChevronRight,
-  Printer,
+  Download,
   Share2,
 } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -55,25 +55,95 @@ export default function Reports() {
     setYear(y);
   };
 
-  const shareReport = async () => {
-    const { buildReportText } = await import("@/lib/reports");
-    const text = buildReportText(report, settings);
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: `التقرير الشهري — ${settings.schoolName}`,
-          text,
-        });
-        return;
-      } catch {
-        /* user cancelled */
-      }
-    }
-    await navigator.clipboard?.writeText(text);
-    toast.success("تم نسخ التقرير إلى الحافظة");
+  const monthLabel = `${arabicMonthName(month)} ${year}`;
+  const scopeLabel = selected ? selected.name : "كل الموظفين";
+  const fileName = `تقرير-${year}-${String(month + 1).padStart(2, "0")}.pdf`;
+
+  const makePdf = async () => {
+    const { buildReportPdf } = await import("@/lib/pdf-report");
+    return buildReportPdf({ report, settings, monthLabel, scopeLabel });
   };
 
-  const monthLabel = `${arabicMonthName(month)} ${year}`;
+  /**
+   * Export the report as a real PDF: saved straight to Downloads inside the
+   * Android app, or via a normal file download in the browser (which also
+   * lets the user "Save as PDF").
+   */
+  const downloadReport = async () => {
+    try {
+      const blob = await makePdf();
+      const scope = selected ? "employee" : "all";
+      const files = getAndroidFiles();
+      if (files) {
+        const { blobToBase64 } = await import("@/lib/pdf-report");
+        files.savePdf(await blobToBase64(blob), fileName);
+        captureEvent("report_exported", {
+          scope,
+          month: month + 1,
+          year,
+          method: "android_save",
+        });
+        return;
+      }
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = fileName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 5000);
+      captureEvent("report_exported", {
+        scope,
+        month: month + 1,
+        year,
+        method: "download",
+      });
+    } catch (err) {
+      console.error("[reports] PDF export failed:", err);
+      toast.error("تعذر إنشاء ملف PDF — حاول مجدداً");
+    }
+  };
+
+  /** Share the report as a PDF file (native sheet in the app and on mobile). */
+  const shareReport = async () => {
+    const scope = selected ? "employee" : "all";
+    try {
+      const blob = await makePdf();
+      const files = getAndroidFiles();
+      if (files) {
+        const { blobToBase64 } = await import("@/lib/pdf-report");
+        files.sharePdf(await blobToBase64(blob), fileName);
+        captureEvent("report_shared", { method: "android_share", scope });
+        return;
+      }
+      const file = new File([blob], fileName, { type: "application/pdf" });
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: `التقرير الشهري — ${settings.schoolName}`,
+        });
+        captureEvent("report_shared", { method: "native_share", scope });
+        return;
+      }
+      // No file sharing here — save the PDF instead of copying plain text.
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = fileName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 5000);
+      captureEvent("report_shared", { method: "download", scope });
+      toast.success("تم حفظ التقرير كملف PDF — شاركه من الملفات");
+    } catch (err) {
+      // The user dismissed the system share sheet.
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      console.error("[reports] PDF share failed:", err);
+      toast.error("تعذّرت مشاركة التقرير — حاول مجدداً");
+    }
+  };
 
   return (
     <div className="mx-auto w-full max-w-md px-4 pb-28 pt-6">
@@ -145,10 +215,10 @@ export default function Reports() {
         <div className="flex gap-2">
           <Button
             className="flex-1 rounded-xl"
-            onClick={() => window.print()}
+            onClick={() => void downloadReport()}
           >
-            <Printer className="size-4" />
-            إنشاء تقرير PDF
+            <Download className="size-4" />
+            تحميل تقرير PDF
           </Button>
           <Button
             variant="outline"
@@ -211,119 +281,6 @@ export default function Reports() {
           })}
         </section>
       )}
-
-      {/* Hidden print sheet — real printable document */}
-      <div id="print-root" className="hidden print:block">
-        <PrintableReport
-          report={report}
-          settings={settings}
-          monthLabel={monthLabel}
-          scopeLabel={selected ? selected.name : "كل الموظفين"}
-        />
-      </div>
-    </div>
-  );
-}
-
-function PrintableReport({
-  report,
-  settings,
-  monthLabel,
-  scopeLabel,
-}: {
-  report: ReturnType<typeof buildMonthlyReport>;
-  settings: { schoolName: string; principalName: string; reportFooterNote?: string };
-  monthLabel: string;
-  scopeLabel: string;
-}) {
-  return (
-    <div className="bg-white p-6 text-black" dir="rtl">
-      <header className="mb-4 border-b-2 border-black/80 pb-3 text-center">
-        <h1 className="text-xl font-extrabold">{settings.schoolName}</h1>
-        <p className="mt-1 text-sm font-bold">
-          التقرير الشهري للحضور والغياب — {monthLabel}
-        </p>
-        <p className="mt-0.5 text-xs">النطاق: {scopeLabel}</p>
-      </header>
-
-      {/* Detailed rows */}
-      <table className="w-full border-collapse text-[11px]">
-        <thead>
-          <tr className="border-b border-black/70 bg-black/5 text-[11px]">
-            <th className="border border-black/40 px-2 py-1.5 text-right">اسم الموظف</th>
-            <th className="border border-black/40 px-2 py-1.5">التاريخ</th>
-            <th className="border border-black/40 px-2 py-1.5">الوقت</th>
-            <th className="border border-black/40 px-2 py-1.5">الحالة</th>
-          </tr>
-        </thead>
-        <tbody>
-          {report.rows.length === 0 ? (
-            <tr>
-              <td colSpan={4} className="border border-black/40 px-2 py-3 text-center">
-                لا توجد سجلات لهذا الشهر
-              </td>
-            </tr>
-          ) : (
-            report.rows.map((r, i) => (
-              <tr key={i} className="border-b border-black/20">
-                <td className="border border-black/40 px-2 py-1 text-right">{r.employeeName}</td>
-                <td className="border border-black/40 px-2 py-1 text-center">{r.date}</td>
-                <td className="border border-black/40 px-2 py-1 text-center">{r.time}</td>
-                <td className="border border-black/40 px-2 py-1 text-center font-bold">
-                  {STATUS_LABELS[r.status]}
-                </td>
-              </tr>
-            ))
-          )}
-        </tbody>
-      </table>
-
-      {/* Stats per employee */}
-      <h2 className="mt-5 mb-2 text-sm font-extrabold">الإحصائيات الشهرية</h2>
-      <table className="w-full border-collapse text-[11px]">
-        <thead>
-          <tr className="border-b border-black/70 bg-black/5">
-            <th className="border border-black/40 px-2 py-1.5 text-right">الموظف</th>
-            <th className="border border-black/40 px-2 py-1.5">حضور</th>
-            <th className="border border-black/40 px-2 py-1.5">تأخير</th>
-            <th className="border border-black/40 px-2 py-1.5">غياب</th>
-            <th className="border border-black/40 px-2 py-1.5">مأذونية</th>
-            <th className="border border-black/40 px-2 py-1.5">نسبة الحضور</th>
-            <th className="border border-black/40 px-2 py-1.5">إجمالي التأخير</th>
-          </tr>
-        </thead>
-        <tbody>
-          {report.employees.map((e) => {
-            const s = report.perEmployee.get(e.id) ?? EMPTY_STATS;
-            return (
-              <tr key={e.id} className="border-b border-black/20">
-                <td className="border border-black/40 px-2 py-1 text-right font-semibold">{e.name}</td>
-                <td className="border border-black/40 px-2 py-1 text-center">{s.present}</td>
-                <td className="border border-black/40 px-2 py-1 text-center">{s.late}</td>
-                <td className="border border-black/40 px-2 py-1 text-center">{s.absent}</td>
-                <td className="border border-black/40 px-2 py-1 text-center">{s.permission}</td>
-                <td className="border border-black/40 px-2 py-1 text-center font-bold">{attendanceRate(s)}٪</td>
-                <td className="border border-black/40 px-2 py-1 text-center">{formatLateMinutes(s.lateMinutes)}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-
-      <footer className="mt-6 flex items-end justify-between text-xs">
-        <div>
-          <p>تاريخ الإنشاء: {formatNumericDate(todayKey())}</p>
-          {settings.reportFooterNote && (
-            <p className="mt-1 text-[10px] text-black/60">
-              {settings.reportFooterNote}
-            </p>
-          )}
-        </div>
-        <div className="text-center">
-          <p className="font-bold">{settings.principalName}</p>
-          <p className="mt-8 border-t border-black/60 pt-1">توقيع مدير المدرسة</p>
-        </div>
-      </footer>
     </div>
   );
 }

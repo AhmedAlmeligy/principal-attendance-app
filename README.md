@@ -58,6 +58,23 @@ The convex server has a separate set of environment variables that are accessibl
 
 Currently, these variables include auth-specific keys: JWKS, JWT_PRIVATE_KEY, and SITE_URL.
 
+## Product analytics (PostHog)
+
+Usage analytics live in `src/lib/analytics.ts` (PostHog, `posthog-js`).
+
+- Set `VITE_POSTHOG_KEY` (the project API key, `phc_…`) and optionally
+  `VITE_POSTHOG_HOST` (defaults to `https://us.i.posthog.com`) in `.env`.
+  With no key every analytics helper is a no-op.
+- Consent is respected: PostHog only initialises after the principal accepts
+  the terms & privacy gate, and **الإعدادات → إحصاءات الاستخدام** switches it
+  off again (opt-out clears the stored identity).
+- The journey captured is onboarding → feature adoption: `$pageview`,
+  `terms_accepted`, `school_settings_saved`, `employee_added`,
+  `attendance_recorded`, `report_exported` and `report_shared`. Only counts and
+  enum values are sent — never employee names, phones or notes.
+- Users are identified by a random per-device id (`hader:analytics-id`), since
+  the app has no accounts. Session recording is disabled.
+
 Vite also proxies the Convex backend (see `server.proxy` in `vite.config.ts`):
 `/convex` forwards to `http://127.0.0.1:3210` (WebSocket included) and
 `/convex-site` to `http://127.0.0.1:3211`, stripping the prefix. That lets

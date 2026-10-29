@@ -5,9 +5,11 @@ import { ChevronDown } from "lucide-react";
  * reference works at "/" in dev and at "/<repo>/" on GitHub Pages. */
 const logoSrc = `${import.meta.env.BASE_URL}logo.svg`;
 import { getMeta, setMeta } from "@/lib/local-db";
+import { captureEvent, setAnalyticsConsent } from "@/lib/analytics";
 
-/** Bump this to re-prompt all users on next launch. */
-export const TERMS_VERSION = "1.0";
+/** Bump this to re-prompt all users on next launch. 1.1 adds the usage
+ *  analytics paragraph, so everyone consents to it explicitly once. */
+export const TERMS_VERSION = "1.1";
 const ACCEPT_KEY = "termsAcceptedVersion";
 
 interface Section {
@@ -91,6 +93,7 @@ const SECTIONS: Section[] = [
     paras: [
       "يُخزَّن البيانات الأساسي (الموظفون وسجلات الحضور والإعدادات) محليًا على جهاز المستخدم داخل قاعدة بيانات التطبيق، وقد يُزامَن اختياريًا مع خدمات سحابية موثوقة لتشغيل الخدمة.",
       "لا يبيع المشغّل بيانات المستخدمين ولا يشاركها لأغراض تسويقية، ولا يُتاح لجهة خارجية استخدامها إلا بالقدر اللازم لتشغيل الخدمة أو عندما يقتضي القانون ذلك.",
+      "بعد موافقتك تُجمع إحصاءات استخدام مجهولة (مثل الصفحات المفتوحة والأزرار المستخدمة) لتحسين التطبيق، ولا تتضمن أسماء الموظفين أو أرقام هواتفهم أو ملاحظات الحضور. يمكنك إيقاف هذه الإحصاءات في أي وقت من الإعدادات.",
       "لا يمكن ضمان أمان مطلق للبيانات؛ فبمجرد وصول بيانات إلى الإنترنت أو جهاز متصل بالإنترنت تصبح معرّضة لمخاطر تقنية لا يتحمّل مسؤوليتها المشغّل، بما في ذلك الاختراق وسرقة البيانات وأي مسائل قانونية أخرى ناتجة عن ذلك.",
     ],
   },
@@ -134,6 +137,9 @@ export function TermsGate({ children }: { children: ReactNode }) {
 
   const accept = async () => {
     await setMeta(ACCEPT_KEY, TERMS_VERSION);
+    // Acceptance is also the analytics opt-in (section 11 of the policy).
+    setAnalyticsConsent(true);
+    captureEvent("terms_accepted", { version: TERMS_VERSION });
     setState("accepted");
   };
 

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Phone in dark mode: no white strip above or below the WebView. -->
+    <style name="Theme.Hadir" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/hadir_bg_dark</item>
+        <item name="android:statusBarColor">@color/hadir_status_dark</item>
+        <item name="android:navigationBarColor">@color/hadir_nav_dark</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+</resources>

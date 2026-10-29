@@ -1,0 +1,45 @@
+name: Feature request
+description: Suggest an idea or improvement for the app
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What are you trying to do that the app doesn't support today?
+      placeholder: As a principal I need to...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: How would you like it to work?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any other approaches you thought about, or workarounds you use now.
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where should this appear?
+      options:
+        - Website and Android app
+        - Website only
+        - Android app only
+        - Doesn't matter / not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context
+      description: Mockups, screenshots, or references that help explain the idea.

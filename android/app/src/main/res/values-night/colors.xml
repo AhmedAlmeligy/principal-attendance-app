@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Splash colours when the phone is in dark mode. -->
+    <color name="splash_bg">#08131b</color>
+    <color name="splash_text">#e8eef5</color>
+</resources>

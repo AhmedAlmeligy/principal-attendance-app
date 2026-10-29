@@ -31,6 +31,9 @@ jobs:
           # deployed site to your Convex backend. Without it the app runs
           # local-only (data stays on the device).
           VITE_CONVEX_URL: ${{ vars.VITE_CONVEX_URL }}
+          # Optional: PostHog analytics. Without the key analytics stays off.
+          VITE_POSTHOG_KEY: ${{ vars.VITE_POSTHOG_KEY }}
+          VITE_POSTHOG_HOST: ${{ vars.VITE_POSTHOG_HOST }}
       - name: Configure for GitHub Pages sub-path
         run: |
           # SPA deep links: GitHub Pages serves 404.html for unknown paths.

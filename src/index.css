@@ -302,26 +302,10 @@
   color: oklch(0.78 0.02 235);
 }
 
-/* Print: only the report sheet */
+/* Reports are exported as real PDFs (lib/pdf-report.ts), so printing the app
+   itself just falls back to a plain white page. */
 @media print {
-  body * {
-    visibility: hidden !important;
-  }
-  #print-root,
-  #print-root * {
-    visibility: visible !important;
-  }
-  #print-root {
-    position: absolute !important;
-    inset: 0 auto auto 0;
-    width: 100%;
-    background: white !important;
-    backdrop-filter: none !important;
-    box-shadow: none !important;
-    border: none !important;
-  }
-  @page {
-    size: A4;
-    margin: 14mm;
+  body {
+    background: #ffffff !important;
   }
 }

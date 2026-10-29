@@ -22,8 +22,23 @@ import { BottomNav } from "@/components/app/BottomNav";
 import { BiometricGate } from "@/components/BiometricGate";
 import { SwipeNavigator } from "@/components/app/SwipeNavigator";
 import { registerConvexClient } from "@/lib/sync-client";
+import { startAnalytics, trackPageview } from "@/lib/analytics";
 import { TermsGate } from "@/components/TermsGate";
-import { ThemeProvider } from "next-themes";
+import { syncNativeTheme } from "@/lib/android-bridge";
+import { ThemeProvider, useTheme } from "next-themes";
+
+/**
+ * Mirrors the in-app light/dark choice onto the Android status/navigation
+ * bars (the shell cannot see localStorage, and the phone's system theme may
+ * differ from the one picked inside the app). No-op outside the app.
+ */
+function NativeThemeSync() {
+  const { resolvedTheme } = useTheme();
+  useEffect(() => {
+    syncNativeTheme(resolvedTheme === "dark");
+  }, [resolvedTheme]);
+  return null;
+}
 
 // Simple loading fallback for route transitions
 function RouteLoading() {
@@ -150,6 +165,22 @@ function RouteSyncer() {
   return null;
 }
 
+/** Starts PostHog (only once the terms/privacy gate has been accepted) and
+ *  records one pageview per route change for the usage funnel. */
+function AnalyticsTracker() {
+  const location = useLocation();
+
+  useEffect(() => {
+    startAnalytics();
+  }, []);
+
+  useEffect(() => {
+    trackPageview(location.pathname);
+  }, [location.pathname]);
+
+  return null;
+}
+
 /** Layout for authenticated app pages: sync engine + bottom navigation. */
 function AppLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -169,6 +200,7 @@ createRoot(document.getElementById("root")!).render(
     <RootErrorBoundary>
       <TermsGate>
       <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
+        <NativeThemeSync />
         <ConvexAuthProvider client={convex}>
           {/* GitHub Pages serves the app from /<repo>/ — BASE_URL is baked in
               at build time and is "/" everywhere else. */}
@@ -176,6 +208,7 @@ createRoot(document.getElementById("root")!).render(
             basename={import.meta.env.BASE_URL.replace(/\/$/, "") || undefined}
           >
           <RouteSyncer />
+          <AnalyticsTracker />
           <Suspense fallback={<RouteLoading />}>
             <Routes>
               <Route path="/" element={<Landing />} />

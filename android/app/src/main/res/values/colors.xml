@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Colours that mirror the web app's own theme (index.css). The *_light /
+      *_dark pairs are referenced by Theme.Hadir and by MainActivity's
+      AndroidTheme bridge, which switches them at runtime: the theme picked
+      inside the app does not have to match the phone's system theme.
+    -->
+    <color name="hadir_bg_light">#eef4f8</color>
+    <color name="hadir_bg_dark">#08131b</color>
+
+    <color name="hadir_status_light">#eef4f8</color>
+    <color name="hadir_status_dark">#0e1720</color>
+
+    <color name="hadir_nav_light">#ffffff</color>
+    <color name="hadir_nav_dark">#030f17</color>
+
+    <color name="hadir_text_light">#0f172a</color>
+    <color name="hadir_text_dark">#e8eef5</color>
+
+    <!-- Splash screen (qualified per day/night configuration). -->
+    <color name="splash_bg">#eef4f8</color>
+    <color name="splash_text">#0f172a</color>
+</resources>

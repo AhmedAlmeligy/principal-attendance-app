@@ -1,12 +1,22 @@
 package com.hadir.attendance;
 
+import android.Manifest;
 import android.app.Activity;
+import android.content.ContentValues;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.hardware.biometrics.BiometricPrompt;
+import android.media.MediaScannerConnection;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.CancellationSignal;
+import android.os.Environment;
+import android.provider.MediaStore;
+import android.util.Base64;
+import android.util.Log;
 import android.view.View;
 import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
@@ -15,7 +25,14 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.Toast;
 
+import androidx.core.content.FileProvider;
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -38,6 +55,12 @@ public class MainActivity extends Activity {
     private static final String START_URL =
             "https://ahmedalmeligy.github.io/principal-attendance-app/";
     private static final int FILE_CHOOSER_REQ = 0x51;
+    private static final int STORAGE_REQ = 0x52;
+    private static final String FILE_PROVIDER = "com.hadir.attendance.fileprovider";
+    private static final String TAG = "Hadir";
+
+    private byte[] pendingSaveData;
+    private String pendingSaveName;
 
     // BiometricPrompt error codes (same values as the legacy
     // FingerprintManager constants; not all are public on the platform
@@ -60,6 +83,12 @@ public class MainActivity extends Activity {
 
         loading = findViewById(R.id.loading);
         web = findViewById(R.id.webview);
+
+        // Match the shell (bars, window, WebView) to the phone's theme until
+        // the page tells us which theme is active inside the app.
+        boolean night = (getResources().getConfiguration().uiMode
+                & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
+        applyTheme(night);
 
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
@@ -142,9 +171,13 @@ public class MainActivity extends Activity {
             }
         });
 
-        // Native biometric bridge for the fingerprint lock (WebView has no
-        // WebAuthn). Must be injected before the page loads.
+        // Native bridges injected before the page loads:
+        //  - AndroidAuth: the fingerprint lock (WebView has no WebAuthn)
+        //  - AndroidFiles: saving/sharing the report PDF
+        //  - AndroidTheme: status/navigation bar colours
         web.addJavascriptInterface(new AndroidAuthBridge(), "AndroidAuth");
+        web.addJavascriptInterface(new AndroidFilesBridge(), "AndroidFiles");
+        web.addJavascriptInterface(new AndroidThemeBridge(), "AndroidTheme");
 
         if (savedInstanceState == null) {
             web.loadUrl(START_URL);
@@ -226,18 +259,21 @@ public class MainActivity extends Activity {
             return;
         }
         try {
-            BiometricPrompt.Builder builder = new BiometricPrompt.Builder(this)
-                    .setTitle("فتح تطبيق حاضِر")
-                    .setSubtitle("استخدم بصمتك أو قفل جهازك للدخول")
-                    .setNegativeButton("إلغاء", bioExecutor, (dialog, which) ->
-                            finishBio(requestId, "cancelled"));
+            BiometricPrompt.Builder builder = newBiometricBuilder(requestId);
             try {
-                // Allowed on API 24+; lets a PIN/pattern lock unlock too.
+                // Lets a PIN/pattern lock unlock too when no biometric is set.
                 builder.setDeviceCredentialAllowed(true);
             } catch (Throwable ignored) {
                 // Older platform — biometrics only.
             }
-            BiometricPrompt prompt = builder.build();
+            BiometricPrompt prompt;
+            try {
+                prompt = builder.build();
+            } catch (Throwable t) {
+                // Some devices reject device-credential + negative button
+                // combinations; retry with a plain biometric prompt.
+                prompt = newBiometricBuilder(requestId).build();
+            }
             bioBusy = true;
             prompt.authenticate(new CancellationSignal(), bioExecutor,
                     new BiometricPrompt.AuthenticationCallback() {
@@ -264,8 +300,17 @@ public class MainActivity extends Activity {
                         }
                     });
         } catch (Exception e) {
+            Log.e(TAG, "biometric prompt failed", e);
             finishBio(requestId, "failed");
         }
+    }
+
+    private BiometricPrompt.Builder newBiometricBuilder(final String requestId) {
+        return new BiometricPrompt.Builder(this)
+                .setTitle("فتح تطبيق حاضِر")
+                .setSubtitle("استخدم بصمتك أو قفل جهازك للدخول")
+                .setNegativeButton("إلغاء", bioExecutor, (dialog, which) ->
+                        finishBio(requestId, "cancelled"));
     }
 
     private void finishBio(String requestId, String result) {
@@ -284,6 +329,209 @@ public class MainActivity extends Activity {
                 web.evaluateJavascript(js, null);
             }
         });
+    }
+
+    // ---------- file bridge (report PDFs) ----------
+
+    /** Entry point for the page's window.AndroidFiles calls. */
+    public class AndroidFilesBridge {
+        @JavascriptInterface
+        public void savePdf(String base64, String filename) {
+            final byte[] data = decode(base64);
+            if (data == null) {
+                toast("تعذر حفظ التقرير");
+                return;
+            }
+            if (Build.VERSION.SDK_INT >= 29) {
+                saveToDownloads(data, filename);
+                return;
+            }
+            if (checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                    == PackageManager.PERMISSION_GRANTED) {
+                saveToDownloadsLegacy(data, filename);
+            } else {
+                // Ask once, then finish the save in onRequestPermissionsResult.
+                pendingSaveData = data;
+                pendingSaveName = filename;
+                requestPermissions(new String[]{ Manifest.permission.WRITE_EXTERNAL_STORAGE },
+                        STORAGE_REQ);
+            }
+        }
+
+        @JavascriptInterface
+        public void sharePdf(String base64, final String filename) {
+            final byte[] data = decode(base64);
+            if (data == null) {
+                toast("تعذر مشاركة التقرير");
+                return;
+            }
+            new Thread(() -> {
+                try {
+                    File dir = new File(getCacheDir(), "shares");
+                    if (!dir.exists()) dir.mkdirs();
+                    File out = new File(dir, safeName(filename));
+                    try (FileOutputStream fos = new FileOutputStream(out)) {
+                        fos.write(data);
+                    }
+                    final Uri uri = FileProvider.getUriForFile(
+                            MainActivity.this, FILE_PROVIDER, out);
+                    runOnUiThread(() -> {
+                        Intent intent = new Intent(Intent.ACTION_SEND);
+                        intent.setType("application/pdf");
+                        intent.putExtra(Intent.EXTRA_STREAM, uri);
+                        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                        try {
+                            startActivity(Intent.createChooser(intent, "مشاركة التقرير"));
+                        } catch (Exception e) {
+                            toast("لا توجد طريقة لمشاركة الملف");
+                        }
+                    });
+                } catch (Exception e) {
+                    Log.e(TAG, "share failed", e);
+                    runOnUiThread(() -> toast("تعذر مشاركة التقرير"));
+                }
+            }, "hadir-share").start();
+        }
+    }
+
+    /** API 29+: MediaStore, no storage permission needed. */
+    private void saveToDownloads(byte[] data, String filename) {
+        ContentValues values = new ContentValues();
+        Uri uri = null;
+        try {
+            values.put(MediaStore.Downloads.DISPLAY_NAME, safeName(filename));
+            values.put(MediaStore.Downloads.MIME_TYPE, "application/pdf");
+            values.put(MediaStore.Downloads.RELATIVE_PATH,
+                    Environment.DIRECTORY_DOWNLOADS);
+            values.put(MediaStore.Downloads.IS_PENDING, 1);
+            uri = getContentResolver().insert(
+                    MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+            if (uri == null) throw new IOException("insert failed");
+            try (OutputStream os = getContentResolver().openOutputStream(uri)) {
+                if (os == null) throw new IOException("no stream");
+                os.write(data);
+            }
+            values.clear();
+            values.put(MediaStore.Downloads.IS_PENDING, 0);
+            getContentResolver().update(uri, values, null, null);
+            toast("تم حفظ التقرير في مجلد Downloads");
+        } catch (Exception e) {
+            Log.e(TAG, "save failed", e);
+            if (uri != null) {
+                try {
+                    getContentResolver().delete(uri, null, null);
+                } catch (Exception ignored) {
+                }
+            }
+            toast("تعذر حفظ التقرير");
+        }
+    }
+
+    /** API 24–28: needs WRITE_EXTERNAL_STORAGE, granted at runtime. */
+    private void saveToDownloadsLegacy(byte[] data, String filename) {
+        try {
+            File dir = Environment.getExternalStoragePublicDirectory(
+                    Environment.DIRECTORY_DOWNLOADS);
+            if (!dir.exists()) dir.mkdirs();
+            File out = new File(dir, safeName(filename));
+            try (FileOutputStream fos = new FileOutputStream(out)) {
+                fos.write(data);
+            }
+            MediaScannerConnection.scanFile(this,
+                    new String[]{ out.getAbsolutePath() }, null, null);
+            toast("تم حفظ التقرير في مجلد Downloads");
+        } catch (Exception e) {
+            Log.e(TAG, "legacy save failed", e);
+            toast("تعذر حفظ التقرير — تحقق من صلاحية التخزين");
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode,
+                                           String[] permissions,
+                                           int[] grantResults) {
+        if (requestCode == STORAGE_REQ) {
+            byte[] data = pendingSaveData;
+            String name = pendingSaveName;
+            pendingSaveData = null;
+            pendingSaveName = null;
+            if (data == null) return;
+            if (grantResults.length > 0
+                    && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                saveToDownloadsLegacy(data, name);
+            } else {
+                toast("لا يمكن حفظ الملف بدون إذن التخزين");
+            }
+            return;
+        }
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+    }
+
+    // ---------- theme bridge ----------
+
+    /** Entry point for the page's window.AndroidTheme calls. */
+    public class AndroidThemeBridge {
+        @JavascriptInterface
+        public void setDark(final boolean dark) {
+            runOnUiThread(() -> applyTheme(dark));
+        }
+    }
+
+    /** Keeps the system bars in step with the theme chosen inside the app. */
+    private void applyTheme(boolean dark) {
+        try {
+            int status = getColor(dark
+                    ? R.color.hadir_status_dark : R.color.hadir_status_light);
+            int nav = getColor(dark
+                    ? R.color.hadir_nav_dark : R.color.hadir_nav_light);
+            int bg = getColor(dark
+                    ? R.color.hadir_bg_dark : R.color.hadir_bg_light);
+
+            getWindow().setStatusBarColor(status);
+            getWindow().setNavigationBarColor(nav);
+            getWindow().setBackgroundDrawableResource(dark
+                    ? R.color.hadir_bg_dark : R.color.hadir_bg_light);
+
+            View decor = getWindow().getDecorView();
+            int flags = decor.getSystemUiVisibility();
+            if (dark) {
+                flags &= ~(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+                        | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
+            } else {
+                flags |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+                        | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+            }
+            decor.setSystemUiVisibility(flags);
+
+            if (web != null) web.setBackgroundColor(bg);
+        } catch (Exception e) {
+            Log.e(TAG, "theme update failed", e);
+        }
+    }
+
+    // ---------- small helpers ----------
+
+    private byte[] decode(String base64) {
+        if (base64 == null || base64.isEmpty()) return null;
+        try {
+            return Base64.decode(base64, Base64.DEFAULT);
+        } catch (Exception e) {
+            Log.e(TAG, "base64 decode failed", e);
+            return null;
+        }
+    }
+
+    /** Keeps saved filenames to a safe, portable set of characters. */
+    private String safeName(String name) {
+        String cleaned = (name == null ? "" : name)
+                .replaceAll("[^\\p{L}\\p{N}._-]", "_");
+        if (!cleaned.toLowerCase().endsWith(".pdf")) cleaned += ".pdf";
+        return cleaned.isEmpty() ? "report.pdf" : cleaned;
+    }
+
+    private void toast(final String message) {
+        runOnUiThread(() ->
+                Toast.makeText(getApplicationContext(), message, Toast.LENGTH_SHORT).show());
     }
 
     @Override

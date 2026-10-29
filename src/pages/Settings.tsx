@@ -11,6 +11,7 @@ import { fileToAvatarDataUrl } from "@/lib/image";
 import { isValidTime } from "@/lib/datetime";
 import { cn } from "@/lib/utils";
 import {
+  BarChart3,
   Camera,
   Fingerprint,
   Loader2,
@@ -23,6 +24,11 @@ import {
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
+import {
+  analyticsConfigured,
+  getAnalyticsConsent,
+  setAnalyticsConsent,
+} from "@/lib/analytics";
 
 const DAY_LABELS = ["أحد", "إثنين", "ثلاثاء", "أربعاء", "خميس", "جمعة", "سبت"];
 
@@ -209,6 +215,50 @@ function ProfileCard() {
   );
 }
 
+function AnalyticsCard() {
+  const [enabled, setEnabled] = useState(() => getAnalyticsConsent());
+  const configured = analyticsConfigured();
+
+  const toggle = (value: boolean) => {
+    setAnalyticsConsent(value);
+    setEnabled(value);
+    toast.success(
+      value ? "تم تفعيل إحصاءات الاستخدام" : "تم إيقاف إحصاءات الاستخدام",
+    );
+  };
+
+  return (
+    <section className="glass rounded-3xl p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <span className="glass-chip flex size-10 shrink-0 items-center justify-center rounded-xl">
+            <BarChart3 className="size-5 text-primary" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-bold">إحصاءات الاستخدام</p>
+            <p className="mt-0.5 text-[11px] leading-5 text-muted-foreground">
+              {enabled
+                ? "تُجمع إحصاءات مجهولة لتحسين التطبيق — دون أسماء أو أرقام الموظفين"
+                : "الإحصاءات متوقفة — لا يُرسَل أي شيء من هذا الجهاز"}
+            </p>
+          </div>
+        </div>
+        <Switch
+          checked={enabled && configured}
+          disabled={!configured}
+          onCheckedChange={toggle}
+          aria-label="تفعيل إحصاءات الاستخدام"
+        />
+      </div>
+      {!configured && (
+        <p className="mt-2 text-[10px] leading-5 text-muted-foreground">
+          لم يُضبط مفتاح التحليلات في هذا البناء بعد، لذا لا يُرسَل أي شيء.
+        </p>
+      )}
+    </section>
+  );
+}
+
 function ThemeSwitcher() {
   const { theme, setTheme } = useTheme();
   const { settings, saveSettings } = useApp();
@@ -356,6 +406,10 @@ export default function Settings() {
 
       <div className="mt-3">
         <BiometricCard />
+      </div>
+
+      <div className="mt-3">
+        <AnalyticsCard />
       </div>
 
       <div className="mt-3">

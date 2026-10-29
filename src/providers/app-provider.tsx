@@ -29,6 +29,7 @@ import {
   type SyncQueueOp,
 } from "@/lib/local-db";
 import { dateKey } from "@/lib/datetime";
+import { captureEvent, identifyAnalytics } from "@/lib/analytics";
 import type { AppSettings } from "@/lib/types";
 
 type NetState = "online" | "offline";
@@ -218,6 +219,11 @@ function useAppInternal(): AppContextValue {
         });
       }
       await refresh();
+      captureEvent("attendance_recorded", {
+        status: input.status,
+        is_update: Boolean(match),
+        has_notes: Boolean(input.notes),
+      });
     },
     [queueOp, refresh],
   );
@@ -290,6 +296,11 @@ function useAppInternal(): AppContextValue {
         payload: { ...input, localId: id, createdAt: now, updatedAt: now },
       });
       await refresh();
+      captureEvent("employee_added", {
+        category: input.category,
+        has_phone: Boolean(input.phone),
+        has_notes: Boolean(input.notes),
+      });
     },
     [queueOp, refresh],
   );
@@ -361,6 +372,12 @@ function useAppInternal(): AppContextValue {
       await putSettings({ ...input, id: "school", updatedAt: now });
       await queueOp({ kind: "settings.upsert", payload: { ...input } });
       await refresh();
+      captureEvent("school_settings_saved", {
+        working_days: input.workingDays.length,
+        has_footer_note: Boolean(input.reportFooterNote),
+        theme: input.theme ?? "light",
+      });
+      identifyAnalytics({ school_configured: input.schoolName.trim().length > 0 });
     },
     [queueOp, refresh],
   );
