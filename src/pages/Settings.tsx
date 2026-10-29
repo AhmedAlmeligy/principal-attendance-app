@@ -513,6 +513,10 @@ export default function Settings() {
           <Save className="size-3.5" />
           النسخ الاحتياطي السحابي يعمل تلقائياً بعد كل تغيير.
         </p>
+        <p className="text-[11px] text-muted-foreground/80">
+          مرخّص بموجب ترخيص حاضِر — مجاني الاستخدام، ويُمنع بيعه أو تحصيل أي
+          رسوم مقابله دون إذن مسبق من المؤلف.
+        </p>
       </section>
     </div>
   );

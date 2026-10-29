@@ -174,6 +174,10 @@ export default function Landing() {
         <p className="mt-6 text-center text-[10px] text-muted-foreground">
           © 2026 حاضِر — يعمل ببيانات مشفرة ومزامنة سحابية
         </p>
+        <p className="mt-1.5 text-center text-[10px] leading-5 text-muted-foreground/80">
+          التطبيق مجاني الاستخدام للجميع — يُمنع بيعه أو تحصيل أي رسوم مقابله
+          دون إذن مسبق من المؤلف
+        </p>
       </div>
     </motion.div>
   );
