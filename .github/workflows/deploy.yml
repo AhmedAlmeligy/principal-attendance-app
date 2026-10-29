@@ -35,7 +35,9 @@ jobs:
           # fall back to the project's publishable browser key (phc_ keys are
           # designed to ship in client bundles — they are not secrets).
           VITE_POSTHOG_KEY: ${{ vars.VITE_POSTHOG_KEY || 'phc_ydG2BPo4tpzg5Lmk3pz7jPUzwZLWUsS2qy37J5FyTATQ' }}
-          VITE_POSTHOG_HOST: ${{ vars.VITE_POSTHOG_HOST }}
+          # This project lives on PostHog's EU cloud — events sent to the US
+          # default are rejected (verified: /decide 200 EU, 401 US).
+          VITE_POSTHOG_HOST: ${{ vars.VITE_POSTHOG_HOST || 'https://eu.i.posthog.com' }}
       - name: Configure for GitHub Pages sub-path
         run: |
           # SPA deep links: GitHub Pages serves 404.html for unknown paths.
