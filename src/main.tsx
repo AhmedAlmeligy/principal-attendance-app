@@ -1,9 +1,15 @@
 import { Toaster } from "@/components/ui/sonner";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { ConvexReactClient } from "convex/react";
-import React, { StrictMode, useEffect, lazy, Suspense } from "react";
+import React, {
+  StrictMode,
+  useEffect,
+  lazy,
+  Suspense,
+} from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router";
+import { AnimatePresence, motion } from "framer-motion";
 import "./index.css";
 
 // Lazy load route components for better code splitting
@@ -18,7 +24,7 @@ const Settings = lazy(() => import("./pages/Settings.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
 import { AppProvider } from "@/providers/app-provider";
-import { BottomNav } from "@/components/app/BottomNav";
+import { BottomNav, TABS } from "@/components/app/BottomNav";
 import { BiometricGate } from "@/components/BiometricGate";
 import { SwipeNavigator } from "@/components/app/SwipeNavigator";
 import { registerConvexClient } from "@/lib/sync-client";
@@ -181,13 +187,43 @@ function AnalyticsTracker() {
   return null;
 }
 
+// Module scope (same pattern as the unlock flag in lib/biometric.ts): the
+// direction of a page transition is decided by the navigation that just
+// happened, and must survive this layout's remounts without tripping the
+// render-phase ref/setState rules.
+let lastAnimatedPath = "";
+
 /** Layout for authenticated app pages: sync engine + bottom navigation. */
 function AppLayout({ children }: { children: React.ReactNode }) {
+  const { pathname } = useLocation();
+
+  // RTL tab order runs right → left, so moving to the next tab slides the new
+  // page in from the left edge and going back brings it in from the right.
+  const tabIndex = (path: string) =>
+    TABS.findIndex((tab) => (tab.exact ? path === tab.path : path.startsWith(tab.path)));
+  const from = tabIndex(lastAnimatedPath);
+  const to = tabIndex(pathname);
+  const forward = from === -1 || to === -1 ? true : to > from;
+
+  useEffect(() => {
+    lastAnimatedPath = pathname;
+  }, [pathname]);
+
   return (
     <AppProvider>
       <BiometricGate>
         <SwipeNavigator>
-          {children}
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={pathname}
+              initial={{ opacity: 0, x: forward ? -26 : 26 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+            >
+              {children}
+            </motion.div>
+          </AnimatePresence>
           <BottomNav />
         </SwipeNavigator>
       </BiometricGate>

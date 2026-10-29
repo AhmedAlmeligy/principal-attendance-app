@@ -82,10 +82,13 @@ function BiometricCard() {
           </div>
         </div>
         {busy ? (
-          <Loader2 className="mt-2 size-4 shrink-0 animate-spin text-muted-foreground" />
+          <span className="mt-2 flex size-8 shrink-0 items-center justify-center">
+            <Loader2 className="size-4 animate-spin text-muted-foreground" />
+          </span>
         ) : (
           <Switch
             checked={enabled === true}
+            disabled={!available}
             onCheckedChange={(v) =>
               v ? void handleEnable() : void handleDisable()
             }

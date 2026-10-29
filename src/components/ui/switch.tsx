@@ -21,7 +21,10 @@ function Switch({
       <SwitchPrimitive.Thumb
         data-slot="switch-thumb"
         className={cn(
-          "bg-background dark:data-[state=unchecked]:bg-foreground dark:data-[state=checked]:bg-primary-foreground pointer-events-none block size-4 rounded-full ring-0 transition-transform data-[state=checked]:translate-x-[calc(100%-2px)] data-[state=unchecked]:translate-x-0"
+          "bg-background dark:data-[state=unchecked]:bg-foreground dark:data-[state=checked]:bg-primary-foreground pointer-events-none block size-4 rounded-full ring-0 transition-transform data-[state=checked]:translate-x-[calc(100%-2px)] data-[state=unchecked]:translate-x-0",
+          // The app is RTL: the thumb must rest on the RIGHT when off and
+          // slide LEFT when on — otherwise the toggle reads backwards.
+          "rtl:data-[state=unchecked]:translate-x-[calc(100%-2px)] rtl:data-[state=checked]:translate-x-0",
         )}
       />
     </SwitchPrimitive.Root>

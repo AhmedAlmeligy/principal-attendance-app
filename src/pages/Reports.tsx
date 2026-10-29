@@ -17,6 +17,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
+  Loader2,
   Share2,
 } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -28,6 +29,9 @@ export default function Reports() {
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth());
   const [employeeId, setEmployeeId] = useState<string>("all");
+  // PDF rendering happens on this thread and takes a moment — track which
+  // action is running so the button shows a spinner and can't be double-tapped.
+  const [exporting, setExporting] = useState<"download" | "share" | null>(null);
 
   const selected = employees.find((e) => e.id === employeeId);
   const scope = useMemo(
@@ -70,6 +74,8 @@ export default function Reports() {
    * lets the user "Save as PDF").
    */
   const downloadReport = async () => {
+    if (exporting) return;
+    setExporting("download");
     try {
       const blob = await makePdf();
       const scope = selected ? "employee" : "all";
@@ -102,11 +108,15 @@ export default function Reports() {
     } catch (err) {
       console.error("[reports] PDF export failed:", err);
       toast.error("تعذر إنشاء ملف PDF — حاول مجدداً");
+    } finally {
+      setExporting(null);
     }
   };
 
   /** Share the report as a PDF file (native sheet in the app and on mobile). */
   const shareReport = async () => {
+    if (exporting) return;
+    setExporting("share");
     const scope = selected ? "employee" : "all";
     try {
       const blob = await makePdf();
@@ -142,6 +152,8 @@ export default function Reports() {
       if (err instanceof DOMException && err.name === "AbortError") return;
       console.error("[reports] PDF share failed:", err);
       toast.error("تعذّرت مشاركة التقرير — حاول مجدداً");
+    } finally {
+      setExporting(null);
     }
   };
 
@@ -215,18 +227,30 @@ export default function Reports() {
         <div className="flex gap-2">
           <Button
             className="flex-1 rounded-xl"
+            disabled={exporting !== null}
             onClick={() => void downloadReport()}
+            aria-busy={exporting === "download"}
           >
-            <Download className="size-4" />
-            تحميل تقرير PDF
+            {exporting === "download" ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Download className="size-4" />
+            )}
+            {exporting === "download" ? "جارٍ إنشاء PDF…" : "تحميل تقرير PDF"}
           </Button>
           <Button
             variant="outline"
             className="rounded-xl"
+            disabled={exporting !== null}
             onClick={() => void shareReport()}
+            aria-busy={exporting === "share"}
           >
-            <Share2 className="size-4" />
-            مشاركة
+            {exporting === "share" ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Share2 className="size-4" />
+            )}
+            {exporting === "share" ? "جارٍ التجهيز…" : "مشاركة"}
           </Button>
         </div>
       </section>
