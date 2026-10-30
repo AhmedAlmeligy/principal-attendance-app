@@ -3,6 +3,12 @@
  * Safe to re-run: employees.add rejects exact name+phone duplicates, and
  * attendance.upsert keys on employeeId+date.
  *
+ * NOTE: the source deployment (happy-otter-123) currently returns 404 on
+ * every endpoint — if it has been deleted there is nothing to migrate from,
+ * and this script says so instead of crashing. The working recovery path is
+ * device-side: each device re-uploads its local history to the new backend
+ * before its first sync (see `ensureFullUpload` in src/lib/sync-client.ts).
+ *
  * Usage: bun run scripts/migrate.mjs
  */
 import { ConvexHttpClient } from "convex/browser";
@@ -10,6 +16,28 @@ import { api } from "../src/convex/_generated/api.js";
 
 const OLD_URL = "https://happy-otter-123.convex.cloud";
 const NEW_URL = "https://fantastic-seahorse-539.convex.cloud";
+
+// Preflight: a dead deployment answers 404 with an empty/non-JSON body, which
+// the HTTP client turns into an opaque `Error:` stack trace. Check first.
+const probe = await fetch(`${OLD_URL}/api/query`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ path: "employees:list", args: {} }),
+}).then(
+  (res) => res,
+  (err) => err,
+);
+if (probe instanceof Error || !probe.ok) {
+  const detail = probe instanceof Error ? probe.message : `HTTP ${probe.status}`;
+  console.error(`Old deployment ${OLD_URL} is not reachable (${detail}).`);
+  console.error("It appears to have been deleted — there is no data to migrate from.");
+  console.error(
+    "Recovery happens on-device instead: each device re-uploads its local\n" +
+      "history to the new backend before its first sync\n" +
+      "(see ensureFullUpload in src/lib/sync-client.ts).",
+  );
+  process.exit(1);
+}
 
 const oldC = new ConvexHttpClient(OLD_URL);
 const newC = new ConvexHttpClient(NEW_URL);

@@ -99,6 +99,12 @@ public class MainActivity extends Activity {
         s.setJavaScriptCanOpenWindowsAutomatically(true);
         s.setSupportMultipleWindows(true);
         s.setMediaPlaybackRequiresUserGesture(false);
+        // Never serve a stale app shell: index.html decides which bundle — and
+        // which Convex backend URL — runs, so revalidate it on every launch
+        // (a cached copy from an older deploy keeps pointing at a retired
+        // backend and the app reports it cannot reach the cloud). Assets are
+        // content-hashed, so they remain cheap to revalidate.
+        s.setCacheMode(WebSettings.LOAD_NO_CACHE);
 
         web.setWebViewClient(new WebViewClient() {
             @Override
