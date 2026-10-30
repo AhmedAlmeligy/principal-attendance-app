@@ -1,5 +1,3 @@
-import posthog from "posthog-js";
-
 /**
  * Product analytics for حاضِر (PostHog).
  *
@@ -30,6 +28,24 @@ const apiHost =
 let fallbackId: string | null = null;
 let initialized = false;
 let active = false;
+
+/** posthog-js (~200 kB) is imported lazily so it never blocks first paint. */
+let posthogClient: typeof import("posthog-js").default | null = null;
+let clientLoading: Promise<void> | null = null;
+/** Pageview captured before the library finished loading — flushed on init. */
+let pendingPageview: string | null = null;
+
+function loadClient(): Promise<void> {
+  clientLoading ??= import("posthog-js")
+    .then((m) => {
+      posthogClient = m.default;
+    })
+    .catch((err) => {
+      clientLoading = null; // allow a retry on the next startAnalytics()
+      console.warn("[analytics] posthog-js failed to load:", err);
+    });
+  return clientLoading;
+}
 
 export function analyticsConfigured(): boolean {
   return Boolean(projectKey);
@@ -75,10 +91,22 @@ function clean(props: EventProps): Record<string, string | number | boolean> {
 /** Initialise PostHog for this device — only once consent has been granted. */
 export function startAnalytics(): void {
   if (active || typeof window === "undefined") return;
-  if (!projectKey || !getAnalyticsConsent()) return;
+  const key = projectKey;
+  if (!key || !getAnalyticsConsent()) return;
 
-  if (!initialized) {
-    posthog.init(projectKey, {
+  active = true;
+
+  if (initialized) {
+    posthogClient?.opt_in_capturing();
+    identifyAnalytics();
+    return;
+  }
+  initialized = true;
+
+  void loadClient().then(() => {
+    const ph = posthogClient;
+    if (!ph) return;
+    ph.init(key, {
       api_host: apiHost,
       // Pageviews are captured per route in `trackPageview`; autocapture still
       // records taps on elements so feature adoption is visible.
@@ -91,18 +119,23 @@ export function startAnalytics(): void {
       disable_session_recording: true,
       respect_dnt: true,
     });
-    initialized = true;
-  }
-
-  posthog.opt_in_capturing();
-  active = true;
-  identifyAnalytics();
+    ph.opt_in_capturing();
+    identifyAnalytics();
+    if (pendingPageview !== null) {
+      const path = pendingPageview;
+      pendingPageview = null;
+      ph.capture("$pageview", {
+        $current_url: window.location.href,
+        path,
+      });
+    }
+  });
 }
 
 /** Identify the current device, optionally attaching (or updating) properties. */
 export function identifyAnalytics(props: EventProps = {}): void {
-  if (!active) return;
-  posthog.identify(
+  if (!active || !posthogClient) return;
+  posthogClient.identify(
     deviceId(),
     clean({ app: "hadir", role: "principal", ...props }),
   );
@@ -110,14 +143,18 @@ export function identifyAnalytics(props: EventProps = {}): void {
 
 /** Capture a product event. Dropped silently unless consent is active. */
 export function captureEvent(event: string, props: EventProps = {}): void {
-  if (!active) return;
-  posthog.capture(event, clean(props));
+  if (!active || !posthogClient) return;
+  posthogClient.capture(event, clean(props));
 }
 
 /** Record a route view — the backbone of the onboarding/usage funnel. */
 export function trackPageview(path: string): void {
   if (!active) return;
-  posthog.capture("$pageview", {
+  if (!posthogClient) {
+    pendingPageview = path; // flushed as soon as the library finishes loading
+    return;
+  }
+  posthogClient.capture("$pageview", {
     $current_url: window.location.href,
     path,
   });
@@ -137,8 +174,9 @@ export function setAnalyticsConsent(granted: boolean): void {
   }
 
   if (initialized) {
-    posthog.opt_out_capturing();
-    posthog.reset();
+    posthogClient?.opt_out_capturing();
+    posthogClient?.reset();
   }
   active = false;
+  pendingPageview = null;
 }

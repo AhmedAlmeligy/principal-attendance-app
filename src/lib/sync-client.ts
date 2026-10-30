@@ -7,6 +7,8 @@ import {
   setMeta,
   getAllEmployees,
   getAllAttendance,
+  enqueueOp,
+  getLocalSettings,
   putAttendance,
   putAttendanceList,
   putEmployees,
@@ -76,6 +78,99 @@ export function hasInitialSyncCompleted() {
   return hasSyncedOnce;
 }
 
+const FULL_UPLOAD_FLAG = "fullUploadFor";
+
+/**
+ * One-time re-upload when the app is pointed at a fresh backend.
+ *
+ * pullAll treats the server as the source of truth and prunes any local row
+ * the server does not have — correct in steady state, but destructive on the
+ * first pull against an empty deployment (the device would wipe its own
+ * history). This queues one full re-upload per backend URL before that pull,
+ * stamped with the earliest queue timestamps so it flushes before anything
+ * already pending. Idempotent: creates map onto existing rows, attendance
+ * upserts key on employee+date, and the server rejects stale overwrites.
+ */
+async function ensureFullUpload(c: ConvexReactClient): Promise<void> {
+  const backend =
+    (import.meta.env.VITE_CONVEX_URL as string | undefined) ?? "";
+  if (!backend) return; // local-only build: nothing to upload to
+  if ((await getMeta<string>(FULL_UPLOAD_FLAG)) === backend) return;
+
+  const employees = await getAllEmployees();
+  const attendance = await getAllAttendance();
+  const settings = await getLocalSettings();
+
+  let t = 1;
+  const activeIds = new Set<string>();
+  for (const e of employees) {
+    if (e.deleted) continue;
+    const mapped = await getMeta<string>(`emp:${e.id}`);
+    if (mapped === "__deleted__") continue; // deleted before adoption
+    activeIds.add(e.id);
+    await enqueueOp({
+      id: crypto.randomUUID(),
+      kind: "employee.create",
+      payload: {
+        localId: e.id,
+        name: e.name,
+        phone: e.phone,
+        position: e.position,
+        category: e.category,
+        notes: e.notes,
+        createdAt: e.createdAt,
+        updatedAt: e.updatedAt,
+      },
+      queuedAt: t++,
+    });
+  }
+
+  for (const a of attendance) {
+    if (a.deleted || !activeIds.has(a.employeeId)) continue;
+    await enqueueOp({
+      id: crypto.randomUUID(),
+      kind: "attendance.upsert",
+      payload: {
+        employeeId: a.employeeId,
+        employeeName: a.employeeName,
+        date: a.date,
+        time: a.time,
+        status: a.status,
+        notes: a.notes,
+        createdAt: a.createdAt,
+        updatedAt: a.updatedAt,
+        localRecordId: a.id,
+      },
+      queuedAt: t++,
+    });
+  }
+
+  // Settings are a singleton: only seed it when the new backend has none, so
+  // a second device adopting later cannot clobber the first one's values.
+  if (settings) {
+    const serverSettings = await c.query(api.settings.get, {});
+    if (!serverSettings) {
+      await enqueueOp({
+        id: crypto.randomUUID(),
+        kind: "settings.upsert",
+        payload: {
+          schoolName: settings.schoolName,
+          principalName: settings.principalName,
+          defaultArrivalTime: settings.defaultArrivalTime,
+          lateThreshold: settings.lateThreshold,
+          workingDays: settings.workingDays,
+          reportFooterNote: settings.reportFooterNote,
+          theme: settings.theme,
+          principalPhoto: settings.principalPhoto,
+        },
+        queuedAt: t++,
+      });
+    }
+  }
+
+  await setMeta(FULL_UPLOAD_FLAG, backend);
+}
+
 /** Replay the local queue against Convex using the authenticated client. */
 export async function syncNow(): Promise<void> {
   if (syncing) return;
@@ -93,6 +188,10 @@ export async function syncNow(): Promise<void> {
       return;
     }
     setState("syncing");
+    serverEmpIds = null;
+    // Queue the fresh-backend re-upload (if this backend was just adopted)
+    // before reading the queue — pullAll below prunes rows it doesn't see.
+    await ensureFullUpload(c);
     // Replay in the order operations were created. Queue ids are random UUIDs,
     // so getAll()'s key order is NOT chronological — e.g. an attendance upsert
     // for an offline-created employee must run AFTER its employee.create op,
@@ -120,23 +219,103 @@ export async function syncNow(): Promise<void> {
     setState("error");
   } finally {
     syncing = false;
+    serverEmpIds = null;
   }
 }
 
 type Payload = Record<string, unknown>;
 
 /**
- * Resolve a local-or-server employee id to a server id.
+ * Employee ids that exist on the CURRENT backend for the duration of one
+ * sync run. Ids minted by a previous deployment are well-formed Convex ids
+ * but resolve to nothing here — verifying against this set makes stale ids
+ * fall back to a fresh create instead of writing orphan rows.
+ */
+let serverEmpIds: Set<string> | null = null;
+
+async function fetchServerEmpIds(c: ConvexReactClient): Promise<Set<string>> {
+  if (!serverEmpIds) {
+    const rows = await c.query(api.employees.list, {});
+    serverEmpIds = new Set(rows.map((r) => r._id));
+  }
+  return serverEmpIds;
+}
+
+/** True for "this id does not exist on this backend" failures (old backend, record removed elsewhere). */
+function isStaleIdError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return (
+    msg.includes("NOT_FOUND") ||
+    msg.includes("Could not find") ||
+    msg.includes("Invalid document id") ||
+    msg.includes("expected document id")
+  );
+}
+
+/**
+ * Resolve a local-or-server employee id to a server id on THIS backend.
  * Local ids are UUIDs (contain dashes); server ids never do.
  */
 async function resolveEmployeeServerId(
+  c: ConvexReactClient,
   id: string,
 ): Promise<string | undefined> {
   const mapped = await getMeta<string>(`emp:${id}`);
   if (mapped === "__deleted__") return undefined;
-  if (mapped) return mapped;
-  if (!id.includes("-")) return id; // already a server id
+  if (mapped) {
+    // The mapping may predate a backend migration — only trust it if the row
+    // actually exists on the current backend.
+    const known = await fetchServerEmpIds(c);
+    return known.has(mapped) ? mapped : undefined;
+  }
+  if (!id.includes("-")) {
+    // Already a server id — but which backend minted it?
+    const known = await fetchServerEmpIds(c);
+    return known.has(id) ? id : undefined;
+  }
   return undefined; // local id, never pushed
+}
+
+/** Create an employee from an op payload, mapping onto an existing row on name+phone collision. */
+async function createServerEmployee(
+  c: ConvexReactClient,
+  p: Payload,
+  localRef: string | undefined,
+): Promise<void> {
+  try {
+    const newId = await c.mutation(api.employees.add, {
+      name: p.name as string,
+      phone: p.phone as string,
+      position: p.position as string,
+      category: p.category as string,
+      notes: p.notes as string | undefined,
+      createdAt: p.createdAt as number,
+      updatedAt: p.updatedAt as number,
+    });
+    if (localRef) {
+      await setMeta(`emp:${localRef}`, newId);
+      serverEmpIds?.add(newId);
+    }
+  } catch (err) {
+    if (
+      err instanceof Error &&
+      err.message.includes("DUPLICATE_EMPLOYEE") &&
+      localRef
+    ) {
+      // Already on the server (another device adopted first, or a previous
+      // partial sync) — map onto it so attendance can resolve.
+      const employees = await c.query(api.employees.list, {});
+      const match = employees.find(
+        (e) => e.name === p.name && e.phone.trim() === String(p.phone).trim(),
+      );
+      if (match) {
+        await setMeta(`emp:${localRef}`, match._id);
+        serverEmpIds?.add(match._id);
+        return;
+      }
+    }
+    throw err;
+  }
 }
 
 /** Replace a local attendance record with its server-confirmed version. */
@@ -162,18 +341,29 @@ async function applyOp(c: ConvexReactClient, op: SyncQueueOp): Promise<void> {
   switch (op.kind) {
     case "employee.create": {
       // Resolve server id if this local id was mapped before; else create.
-      const serverId = await resolveEmployeeServerId(String(p.localId ?? ""));
+      const serverId = await resolveEmployeeServerId(
+        c,
+        String(p.localId ?? ""),
+      );
+      let updated = false;
       if (serverId) {
-        await c.mutation(api.employees.update, {
-          id: serverId as never,
-          name: p.name as string,
-          phone: p.phone as string,
-          position: p.position as string,
-          category: p.category as string,
-          notes: p.notes as string | undefined,
-          updatedAt: p.updatedAt as number,
-        });
-      } else {
+        try {
+          await c.mutation(api.employees.update, {
+            id: serverId as never,
+            name: p.name as string,
+            phone: p.phone as string,
+            position: p.position as string,
+            category: p.category as string,
+            notes: p.notes as string | undefined,
+            updatedAt: p.updatedAt as number,
+          });
+          updated = true;
+        } catch (err) {
+          if (!isStaleIdError(err)) throw err;
+          // Mapped id was minted by a previous backend — recreate below.
+        }
+      }
+      if (!updated) {
         try {
           const newId = await c.mutation(api.employees.add, {
             name: p.name as string,
@@ -186,6 +376,7 @@ async function applyOp(c: ConvexReactClient, op: SyncQueueOp): Promise<void> {
           });
           if (p.localId) {
             await setMeta(`emp:${String(p.localId)}`, newId);
+            serverEmpIds?.add(newId);
           }
         } catch (err) {
           if (
@@ -202,6 +393,7 @@ async function applyOp(c: ConvexReactClient, op: SyncQueueOp): Promise<void> {
             );
             if (match) {
               await setMeta(`emp:${String(p.localId)}`, match._id);
+              serverEmpIds?.add(match._id);
             } else {
               throw err;
             }
@@ -214,38 +406,33 @@ async function applyOp(c: ConvexReactClient, op: SyncQueueOp): Promise<void> {
     }
     case "employee.update": {
       // Update by server id when known, otherwise resolve from local id.
-      const serverId = await resolveEmployeeServerId(
-        (p.localId as string) ?? (p.id as string),
-      );
+      const localRef = (p.localId as string) ?? (p.id as string);
+      const serverId = await resolveEmployeeServerId(c, localRef);
       if (serverId) {
-        await c.mutation(api.employees.update, {
-          id: serverId as never,
-          name: p.name as string,
-          phone: p.phone as string,
-          position: p.position as string,
-          category: p.category as string,
-          notes: p.notes as string | undefined,
-          updatedAt: p.updatedAt as number,
-        });
+        try {
+          await c.mutation(api.employees.update, {
+            id: serverId as never,
+            name: p.name as string,
+            phone: p.phone as string,
+            position: p.position as string,
+            category: p.category as string,
+            notes: p.notes as string | undefined,
+            updatedAt: p.updatedAt as number,
+          });
+        } catch (err) {
+          if (!isStaleIdError(err)) throw err;
+          // Mapped id was minted by a previous backend — recreate instead.
+          await createServerEmployee(c, p, localRef);
+        }
       } else {
         // Not on the server yet — create it.
-        const newId = await c.mutation(api.employees.add, {
-          name: p.name as string,
-          phone: p.phone as string,
-          position: p.position as string,
-          category: p.category as string,
-          notes: p.notes as string | undefined,
-          createdAt: p.createdAt as number,
-          updatedAt: p.updatedAt as number,
-        });
-        if (p.localId) {
-          await setMeta(`emp:${String(p.localId)}`, newId);
-        }
+        await createServerEmployee(c, p, localRef);
       }
       break;
     }
     case "employee.delete": {
       const serverId = await resolveEmployeeServerId(
+        c,
         (p.localId as string) ?? (p.id as string),
       );
       if (serverId) {
@@ -259,13 +446,21 @@ async function applyOp(c: ConvexReactClient, op: SyncQueueOp): Promise<void> {
           );
           for (const a of mine) {
             if (!a.dirty) {
-              await c.mutation(api.attendance.removeRecord, {
-                id: a.id as never,
-              });
+              try {
+                await c.mutation(api.attendance.removeRecord, {
+                  id: a.id as never,
+                });
+              } catch (err) {
+                if (!isStaleIdError(err)) throw err;
+              }
             }
           }
         }
-        await c.mutation(api.employees.remove, { id: serverId as never });
+        try {
+          await c.mutation(api.employees.remove, { id: serverId as never });
+        } catch (err) {
+          if (!isStaleIdError(err)) throw err;
+        }
         if (p.localId) {
           await setMeta(`emp:${String(p.localId)}`, "__deleted__");
         }
@@ -275,6 +470,7 @@ async function applyOp(c: ConvexReactClient, op: SyncQueueOp): Promise<void> {
     case "attendance.upsert": {
       // Resolve employee id: could be server id directly or a local id.
       const employeeId = await resolveEmployeeServerId(
+        c,
         p.employeeId as string,
       );
       if (!employeeId) break; // employee was deleted; drop the record
@@ -303,7 +499,7 @@ async function applyOp(c: ConvexReactClient, op: SyncQueueOp): Promise<void> {
       const local = atts.find((a) => a.id === (p.id as string));
       if (local && local.dirty) {
         // Not yet on the server — upsert it.
-        const employeeId = await resolveEmployeeServerId(local.employeeId);
+        const employeeId = await resolveEmployeeServerId(c, local.employeeId);
         if (!employeeId) break;
         const serverId = await c.mutation(api.attendance.upsert, {
           employeeId: employeeId as never,
@@ -318,13 +514,19 @@ async function applyOp(c: ConvexReactClient, op: SyncQueueOp): Promise<void> {
         await reconcileAttendance(local.id, serverId as string);
       } else if (local) {
         // Server id is the same as local id (record came from pull).
-        await c.mutation(api.attendance.updateRecord, {
-          id: local.id as never,
-          time: p.time as string | undefined,
-          status: p.status as AttendanceStatus,
-          notes: p.notes as string | undefined,
-          updatedAt: p.updatedAt as number,
-        });
+        try {
+          await c.mutation(api.attendance.updateRecord, {
+            id: local.id as never,
+            time: p.time as string | undefined,
+            status: p.status as AttendanceStatus,
+            notes: p.notes as string | undefined,
+            updatedAt: p.updatedAt as number,
+          });
+        } catch (err) {
+          if (!isStaleIdError(err)) throw err;
+          // Record id came from a previous backend — the fresh upload
+          // already pushed the current values; drop the stale op.
+        }
       }
       break;
     }
@@ -332,7 +534,12 @@ async function applyOp(c: ConvexReactClient, op: SyncQueueOp): Promise<void> {
       const atts = await getAllAttendance();
       const local = atts.find((a) => a.id === (p.id as string));
       if (local && !local.dirty) {
-        await c.mutation(api.attendance.removeRecord, { id: p.id as never });
+        try {
+          await c.mutation(api.attendance.removeRecord, { id: p.id as never });
+        } catch (err) {
+          if (!isStaleIdError(err)) throw err;
+          // Already gone on this backend — nothing to delete.
+        }
       }
       break;
     }
@@ -355,7 +562,12 @@ async function applyOp(c: ConvexReactClient, op: SyncQueueOp): Promise<void> {
       });
       break;
     case "message.delete":
-      await c.mutation(api.thankYouMessages.remove, { id: p.id as never });
+      try {
+        await c.mutation(api.thankYouMessages.remove, { id: p.id as never });
+      } catch (err) {
+        if (!isStaleIdError(err)) throw err;
+        // Already gone on this backend.
+      }
       break;
   }
 }

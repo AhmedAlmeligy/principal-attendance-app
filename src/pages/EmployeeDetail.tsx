@@ -108,7 +108,9 @@ export default function EmployeeDetail() {
           <Button
             variant="outline"
             className="rounded-xl"
-            onClick={() => navigate("/app/employees")}
+            onClick={() =>
+              navigate(`/app/employees?edit=${encodeURIComponent(employee.id)}`)
+            }
             aria-label="تعديل"
           >
             <Pencil className="size-4" />

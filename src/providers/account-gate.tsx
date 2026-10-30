@@ -8,6 +8,7 @@ import { Component, useEffect, type ReactNode } from "react";
 // Module scope: the anonymous sign-in runs once per page load, whatever
 // remounts happen around it (same pattern as the unlock flag in biometric.ts).
 let signInAttempted = false;
+let registerAttempted = false;
 
 /**
  * Catches a failing Convex query (e.g. the account functions are not deployed
@@ -47,24 +48,47 @@ export function AccountGate({ children }: { children: ReactNode }) {
   const { signIn } = useAuthActions();
   const client = useConvex();
 
+  // 1) Sign in once per page load when we have no valid session.
   useEffect(() => {
     if (isLoading || isAuthenticated || signInAttempted) return;
     signInAttempted = true;
+    void signIn("anonymous").catch((err) => {
+      // Offline / local-only / backend not deployed: the app keeps working
+      // without an account. Reset so a later effect run can retry.
+      signInAttempted = false;
+      console.error("[account] anonymous sign-in skipped:", err);
+    });
+  }, [isLoading, isAuthenticated, signIn]);
+
+  // 2) Register the device once authenticated. This runs on every load (not
+  // only right after sign-in) so an already-signed-in device still shows up
+  // in the admin console. `signIn()` resolves as soon as the JWT is stored —
+  // the websocket can still be finishing its re-auth handshake, so the first
+  // attempt may land unauthenticated; retry with a short backoff rather than
+  // dropping the registration. (`devices.register` is idempotent.)
+  useEffect(() => {
+    if (!isAuthenticated || registerAttempted) return;
+    registerAttempted = true;
     void (async () => {
-      try {
-        await signIn("anonymous");
-        await client.mutation(api.devices.register, {
-          deviceId: getDeviceId(),
-          deviceName: getDeviceLabel(),
-        });
-      } catch (err) {
-        // Offline / local-only / backend not deployed: the app keeps working
-        // without an account. Reset so a later effect run can retry.
-        signInAttempted = false;
-        console.error("[account] device registration skipped:", err);
+      let lastErr: unknown;
+      for (let attempt = 1; attempt <= 5; attempt++) {
+        try {
+          await client.mutation(api.devices.register, {
+            deviceId: getDeviceId(),
+            deviceName: getDeviceLabel(),
+          });
+          return;
+        } catch (err) {
+          lastErr = err;
+          await new Promise((resolve) => setTimeout(resolve, 300 * attempt));
+        }
       }
+      // Backend not reachable / not deployed: keep working locally, but let
+      // a later effect run (e.g. next mount) try again.
+      registerAttempted = false;
+      console.error("[account] device registration skipped:", lastErr);
     })();
-  }, [isLoading, isAuthenticated, signIn, client]);
+  }, [isAuthenticated, client]);
 
   return (
     <QueryFallback fallback={<>{children}</>}>

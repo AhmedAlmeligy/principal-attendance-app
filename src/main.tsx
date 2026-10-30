@@ -9,7 +9,6 @@ import React, {
 } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router";
-import { AnimatePresence, motion } from "framer-motion";
 import "./index.css";
 
 // Lazy load route components for better code splitting
@@ -25,7 +24,7 @@ const Admin = lazy(() => import("./pages/Admin.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
 import { AppProvider } from "@/providers/app-provider";
-import { BottomNav, TABS } from "@/components/app/BottomNav";
+import { BottomNav } from "@/components/app/BottomNav";
 import { BiometricGate } from "@/components/BiometricGate";
 import { AccountGate } from "@/providers/account-gate";
 import { SwipeNavigator } from "@/components/app/SwipeNavigator";
@@ -187,52 +186,48 @@ function AnalyticsTracker() {
   }, [location.pathname]);
 
   return null;
-}
-
-// Module scope (same pattern as the unlock flag in lib/biometric.ts): the
-// direction of a page transition is decided by the navigation that just
-// happened, and must survive this layout's remounts without tripping the
-// render-phase ref/setState rules.
-let lastAnimatedPath = "";
-
-/** Layout for authenticated app pages: sync engine + bottom navigation. */
+}/**
+ * Layout for authenticated app pages: sync engine + bottom navigation.
+ *
+ * WhatsApp-style navigation: a tapped tab or swipe swaps the page instantly
+ * (no enter/exit transition to wait for and no full remount of the subtree —
+ * the framer-motion slide previously delayed every navigation and reset page
+ * state). Feedback comes from the pressed/active states of the bottom bar.
+ */
 function AppLayout({ children }: { children: React.ReactNode }) {
-  const { pathname } = useLocation();
-
-  // RTL tab order runs right → left, so moving to the next tab slides the new
-  // page in from the left edge and going back brings it in from the right.
-  const tabIndex = (path: string) =>
-    TABS.findIndex((tab) => (tab.exact ? path === tab.path : path.startsWith(tab.path)));
-  const from = tabIndex(lastAnimatedPath);
-  const to = tabIndex(pathname);
-  const forward = from === -1 || to === -1 ? true : to > from;
-
-  useEffect(() => {
-    lastAnimatedPath = pathname;
-  }, [pathname]);
-
   return (
     <AppProvider>
       <AccountGate>
         <BiometricGate>
-          <SwipeNavigator>
-            <AnimatePresence mode="wait" initial={false}>
-              <motion.div
-                key={pathname}
-                initial={{ opacity: 0, x: forward ? -26 : 26 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.2, ease: "easeOut" }}
-              >
-                {children}
-              </motion.div>
-            </AnimatePresence>
-            <BottomNav />
-          </SwipeNavigator>
+          <SwipeNavigator>{children}</SwipeNavigator>
+          <BottomNav />
         </BiometricGate>
       </AccountGate>
     </AppProvider>
   );
+}
+
+/**
+ * Warms the tab page chunks shortly after startup so the first tap on a
+ * bottom-nav tab swaps instantly instead of waiting on a network fetch (the
+ * second half of "navigation is slow": the spinner came from React.lazy).
+ */
+function RoutePrefetcher() {
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      void Promise.all([
+        import("./pages/Home.tsx"),
+        import("./pages/Attendance.tsx"),
+        import("./pages/Employees.tsx"),
+        import("./pages/EmployeeDetail.tsx"),
+        import("./pages/Reports.tsx"),
+        import("./pages/Settings.tsx"),
+        import("./pages/Messages.tsx"),
+      ]);
+    }, 250);
+    return () => window.clearTimeout(t);
+  }, []);
+  return null;
 }
 
 createRoot(document.getElementById("root")!).render(
@@ -248,6 +243,7 @@ createRoot(document.getElementById("root")!).render(
             basename={import.meta.env.BASE_URL.replace(/\/$/, "") || undefined}
           >
           <RouteSyncer />
+          <RoutePrefetcher />
           <AnalyticsTracker />
           <Suspense fallback={<RouteLoading />}>
             <Routes>

@@ -166,6 +166,7 @@ import {
   putAttendance,
   putEmployee,
   putSettings,
+  setMeta,
   type LocalAttendance,
   type LocalEmployee,
 } from "../local-db";
@@ -246,9 +247,34 @@ beforeEach(async () => {
   registerConvexClient(fakeClient);
   vi.stubGlobal("navigator", { ...navigator, onLine: true });
   setPending(0);
+  // These tests model the steady state against the current backend: pre-mark
+  // the one-time full upload as done so syncNow exercises only the queue.
+  vi.stubEnv("VITE_CONVEX_URL", "https://test-convex.example");
+  await setMeta("fullUploadFor", "https://test-convex.example");
 });
 
 describe("sync engine", () => {
+  it("re-uploads local data to a fresh backend before anything is pulled", async () => {
+    // Model Option B: a brand-new Convex deployment (no fullUpload flag,
+    // empty server) with a device that still holds its history locally.
+    vi.stubEnv("VITE_CONVEX_URL", "https://fresh-convex.example");
+    await putEmployee(makeEmployee());
+    await putAttendance(makeRecord());
+
+    await syncNow();
+
+    // The employee was created on the new backend and mapped locally.
+    expect(serverEmployees.map((e) => e.name)).toEqual(["أحمد محمد"]);
+    expect(await getMeta<string>("emp:loc-emp-1")).toBe("srvEmp1");
+    // Attendance resolved to the NEW server employee id, not the local UUID.
+    expect(serverAttendance).toHaveLength(1);
+    expect(serverAttendance[0]!.employeeId).toBe("srvEmp1");
+    // Flag recorded so subsequent syncs treat this backend as adopted.
+    expect(await getMeta<string>("fullUploadFor")).toBe(
+      "https://fresh-convex.example",
+    );
+  });
+
   it("reports offline without touching the queue when navigator.onLine is false", async () => {
     vi.stubGlobal("navigator", { ...navigator, onLine: false });
     await enqueueOp({

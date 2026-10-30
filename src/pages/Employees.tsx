@@ -41,8 +41,8 @@ import {
   Trash2,
   UserRound,
 } from "lucide-react";
-import { useMemo, useState } from "react";
-import { useNavigate } from "react-router";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router";
 import { toast } from "sonner";
 
 interface FormState {
@@ -69,6 +69,7 @@ const EMPTY_FORM: FormState = {
 export default function Employees() {
   const { employees, addEmployee, updateEmployee, deleteEmployee } = useApp();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<string>("الكل");
   const [form, setForm] = useState<FormState | null>(null);
@@ -104,6 +105,21 @@ export default function Employees() {
       notes: e.notes ?? "",
     });
   };
+
+  // Arriving from the detail page's ✏️ button (/app/employees?edit=<id>):
+  // open the edit sheet as soon as the employee has loaded, instead of
+  // dumping the user back on the list. The param is cleared once handled so
+  // closing the sheet stays closed; the microtask deferral avoids a
+  // cascading synchronous render straight from the effect.
+  useEffect(() => {
+    const editId = searchParams.get("edit");
+    if (!editId || !employees.some((e) => e.id === editId)) return;
+    queueMicrotask(() => {
+      openEdit(editId);
+      setSearchParams({}, { replace: true });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, employees]);
 
   const submit = async () => {
     if (!form) return;
