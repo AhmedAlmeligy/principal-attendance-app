@@ -331,7 +331,10 @@ function useAppInternal(): AppContextValue {
       await putEmployee(employee);
       await queueOp({
         kind: existing?.dirty ? "employee.create" : "employee.update",
-        payload: { ...input, updatedAt: now },
+        // localId lets the sync layer map this local row onto the server row
+        // (create path) and resolve attendance; ops without it used to be
+        // retried forever when they hit a server-side duplicate.
+        payload: { ...input, localId: input.id, updatedAt: now },
       });
       await refresh();
     },

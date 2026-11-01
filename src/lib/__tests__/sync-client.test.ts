@@ -426,6 +426,44 @@ describe("sync engine", () => {
     expect(getSyncSnapshot().state).toBe("idle");
   });
 
+  it("completes a duplicate create that carries only id (legacy edit-path op)", async () => {
+    failNextAdd = true; // create attempt hits the server duplicate
+
+    // Legacy shape: the edit path used to queue employee.create with `id`
+    // instead of `localId`. Before the fix, the duplicate-recovery handler
+    // required localId, so this op was rethrown and retried forever.
+    await enqueueOp({
+      id: "op-1",
+      kind: "employee.create",
+      payload: {
+        id: "loc-emp-legacy",
+        name: "سارة العلي",
+        phone: "07719876543",
+        position: "مديرة",
+        category: "إداري",
+        createdAt: 1000,
+        updatedAt: 1000,
+      },
+      queuedAt: 1,
+    });
+    serverEmployees.push({
+      _id: "srvEmpLegacy",
+      name: "سارة العلي",
+      phone: "07719876543",
+      position: "مديرة",
+      category: "إداري",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+
+    await syncNow();
+
+    // Mapped under the payload's `id`, op drained, sync back to idle.
+    expect(await getMeta<string>("emp:loc-emp-legacy")).toBe("srvEmpLegacy");
+    expect(getSyncSnapshot().state).toBe("idle");
+    expect(await getSyncQueue()).toHaveLength(0);
+  });
+
   it("stops and reports error when a server op fails, keeping the op queued", async () => {
     failNextAdd = true;
     // No matching server row exists, so the duplicate-recovery path rethrows.

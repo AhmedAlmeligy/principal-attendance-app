@@ -327,20 +327,19 @@ async function createServerEmployee(
       serverEmpIds?.add(newId);
     }
   } catch (err) {
-    if (
-      err instanceof Error &&
-      err.message.includes("DUPLICATE_EMPLOYEE") &&
-      localRef
-    ) {
+    if (err instanceof Error && err.message.includes("DUPLICATE_EMPLOYEE")) {
       // Already on the server (another device adopted first, or a previous
-      // partial sync) — map onto it so attendance can resolve.
+      // partial sync) — map onto it so attendance can resolve, and let the
+      // op complete. Retrying the same create forever makes no progress.
       const employees = await c.query(api.employees.list, {});
       const match = employees.find(
         (e) => e.name === p.name && e.phone.trim() === String(p.phone).trim(),
       );
       if (match) {
-        await setMeta(`emp:${localRef}`, match._id);
-        serverEmpIds?.add(match._id);
+        if (localRef) {
+          await setMeta(`emp:${localRef}`, match._id);
+          serverEmpIds?.add(match._id);
+        }
         return;
       }
     }
@@ -411,19 +410,23 @@ async function applyOp(c: ConvexReactClient, op: SyncQueueOp): Promise<void> {
         } catch (err) {
           if (
             err instanceof Error &&
-            err.message.includes("DUPLICATE_EMPLOYEE") &&
-            p.localId
+            err.message.includes("DUPLICATE_EMPLOYEE")
           ) {
             // Already exists on the server (e.g. a previous partial sync).
             // Find it and store the mapping so we update instead of create.
+            // Legacy ops from the edit path carry `id` instead of `localId`
+            // — handle them too, or that op would be retried forever.
             const employees = await c.query(api.employees.list, {});
             const match = employees.find(
               (e) =>
                 e.name === p.name && e.phone.trim() === String(p.phone).trim(),
             );
             if (match) {
-              await setMeta(`emp:${String(p.localId)}`, match._id);
-              serverEmpIds?.add(match._id);
+              const ref = (p.localId as string) ?? (p.id as string);
+              if (ref) {
+                await setMeta(`emp:${ref}`, match._id);
+                serverEmpIds?.add(match._id);
+              }
             } else {
               throw err;
             }
