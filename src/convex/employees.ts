@@ -20,7 +20,15 @@ export const get = query({
   },
 });
 
-/** Add a new employee. Rejects exact duplicate name+phone pairs. */
+/**
+ * Add a new employee.
+ *
+ * Idempotent on name+phone: if the row already exists we return its id
+ * instead of throwing. Sync replays this mutation, so throwing made every
+ * retry fail forever and the queue could never drain — a device running an
+ * older bundle had no recovery path at all. Returning the existing id means
+ * the caller simply maps onto the row that is already there.
+ */
 export const add = mutation({
   args: {
     name: v.string(),
@@ -41,7 +49,7 @@ export const add = mutation({
       (e) => e.phone.trim() === args.phone.trim(),
     );
     if (duplicate) {
-      throw new Error("DUPLICATE_EMPLOYEE");
+      return duplicate._id;
     }
     const { createdAt, updatedAt, ...rest } = args;
     return await ctx.db.insert("employees", {

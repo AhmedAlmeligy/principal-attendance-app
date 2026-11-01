@@ -403,8 +403,12 @@ async function applyOp(c: ConvexReactClient, op: SyncQueueOp): Promise<void> {
             createdAt: p.createdAt as number,
             updatedAt: p.updatedAt as number,
           });
-          if (p.localId) {
-            await setMeta(`emp:${String(p.localId)}`, newId);
+          // Map under either id: legacy ops from the edit path carry `id`
+          // instead of `localId`. Without this the row syncs but the local
+          // record never maps onto it, leaving a phantom duplicate.
+          const ref = (p.localId as string) ?? (p.id as string);
+          if (ref) {
+            await setMeta(`emp:${ref}`, newId);
             serverEmpIds?.add(newId);
           }
         } catch (err) {
