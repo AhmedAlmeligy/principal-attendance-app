@@ -2,10 +2,15 @@ import { Button } from "@/components/ui/button";
 import { LogoAvatar } from "@/components/app/LogoAvatar";
 import { useApp } from "@/providers/app-provider";
 import { cn } from "@/lib/utils";
-import { syncNow } from "@/lib/sync-client";
+import {
+  getSyncLastError,
+  getSyncSnapshot,
+  syncNow,
+} from "@/lib/sync-client";
 import { CloudCheck, CloudOff, Loader2, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router";
+import { toast } from "sonner";
 
 function SyncChip() {
   const { syncState, pendingOps, net, refresh } = useApp();
@@ -28,6 +33,13 @@ function SyncChip() {
       await refresh();
       await syncNow();
       await refresh();
+      // Still failing after a manual run → show the real reason instead of
+      // leaving the user with a bare "تعذر المزامنة".
+      if (getSyncSnapshot().state === "error") {
+        toast.error(
+          `تعذر المزامنة: ${getSyncLastError() ?? "خطأ غير معروف"}`,
+        );
+      }
     } finally {
       setSpinning(false);
     }

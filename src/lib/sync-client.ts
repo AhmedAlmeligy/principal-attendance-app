@@ -44,6 +44,12 @@ export type SyncState = "idle" | "syncing" | "offline" | "error";
 
 let current: SyncState = "idle";
 let pendingCount = 0;
+let lastError: string | null = null;
+
+/** Message of the last failed sync — surfaced by the sync chip on tap. */
+export function getSyncLastError(): string | null {
+  return lastError;
+}
 
 function notify() {
   for (const fn of listeners) fn();
@@ -79,6 +85,25 @@ export function hasInitialSyncCompleted() {
 }
 
 const FULL_UPLOAD_FLAG = "fullUploadFor";
+
+const RETRY_BASE_MS = 5_000;
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
+let retryDelayMs = RETRY_BASE_MS;
+
+/**
+ * A failed sync usually means the websocket was not ready yet at launch
+ * (server-side executions stay clean — the call never left the client).
+ * Retry with capped backoff until a run succeeds so the chip recovers on
+ * its own instead of staying on "تعذر المزامنة" forever.
+ */
+function scheduleRetry() {
+  if (retryTimer) return;
+  retryTimer = setTimeout(() => {
+    retryTimer = null;
+    void syncNow();
+  }, retryDelayMs);
+  retryDelayMs = Math.min(retryDelayMs * 2, 60_000);
+}
 
 /**
  * One-time re-upload when the app is pointed at a fresh backend.
@@ -204,6 +229,7 @@ export async function syncNow(): Promise<void> {
         await applyOp(c, op);
       } catch (err) {
         console.error("sync op failed", op.kind, err);
+        lastError = err instanceof Error ? err.message : String(err);
         setState("error");
         return;
       }
@@ -214,12 +240,16 @@ export async function syncNow(): Promise<void> {
     await setPending(q.length);
     setState("idle");
     markSynced();
+    lastError = null;
+    retryDelayMs = RETRY_BASE_MS;
   } catch (err) {
     console.error("syncNow failed", err);
+    lastError = err instanceof Error ? err.message : String(err);
     setState("error");
   } finally {
     syncing = false;
     serverEmpIds = null;
+    if (current === "error") scheduleRetry();
   }
 }
 

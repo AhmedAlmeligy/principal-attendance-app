@@ -67,6 +67,16 @@ export const register = mutation({
     if (!all.some((u) => u.role === "admin")) {
       await ctx.db.patch(userId, { role: "admin" });
       admin = true;
+    } else if (
+      !admin &&
+      deviceId !== "ephemeral-device" &&
+      all.some((u) => u.deviceId === deviceId && u.role === "admin")
+    ) {
+      // A reinstall or fresh session on a device that already held the
+      // console keeps that access — otherwise every reinstall silently
+      // drops the owner back to member and the admin console disappears.
+      await ctx.db.patch(userId, { role: "admin" });
+      admin = true;
     }
 
     return { revoked: false, isAdmin: admin, appDisabled: f.appDisabled };
