@@ -43,8 +43,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
       getAllAttendance(),
       getLocalSettings(),
     ]);
-    setEmployees(emps.filter((e) => !e.deleted));
-    setAttendance(atts.filter((a) => !a.deleted));
+    const live = emps.filter((e) => !e.deleted);
+    const liveIds = new Set(live.map((e) => e.id));
+    setEmployees(live);
+    // Attendance rows of a deleted employee (history optionally kept on the
+    // backend) must not surface on the board, in today's counters or in the
+    // progress bar — they used to leak through and show "ghost" attendees.
+    setAttendance(atts.filter((a) => !a.deleted && liveIds.has(a.employeeId)));
     if (st) {
       setSettings({
         schoolName: st.schoolName,

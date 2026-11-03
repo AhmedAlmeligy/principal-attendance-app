@@ -107,7 +107,12 @@ export const update = mutation({
 /** Delete an employee and their attendance history (explicitly confirmed in UI). */
 export const remove = mutation({
   args: { id: v.id("employees") },
-  handler: (ctx, args) => ctx.db.delete(args.id),
+  handler: async (ctx, args) => {
+    await requirePrincipal();
+    // Attendance rows are deliberately left in place here; the client hides
+    // them once the employee is gone. Use removeWithHistory to delete them.
+    await ctx.db.delete(args.id);
+  },
 });
 
 /**
