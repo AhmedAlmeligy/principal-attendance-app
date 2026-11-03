@@ -11,6 +11,39 @@ export const listAll = query({
   },
 });
 
+/**
+ * Cheap fingerprint of the table: the newest `updatedAt` seen. Devices store
+ * it after a pull and skip the pull entirely when it is unchanged, which keeps
+ * routine syncs to a single tiny query instead of re-downloading history.
+ */
+export const revision = query({
+  args: {},
+  handler: async (ctx) => {
+    await requirePrincipal();
+    const newest = await ctx.db
+      .query("attendance")
+      .withIndex("by_updatedAt")
+      .order("desc")
+      .take(1);
+    return { latest: newest[0]?.updatedAt ?? 0 };
+  },
+});
+
+/**
+ * Attendance rows touched at or after `since` (incremental pull). Deletions are
+ * not represented here — a full reconcile runs daily and on pull-to-refresh.
+ */
+export const listSince = query({
+  args: { since: v.number() },
+  handler: async (ctx, args) => {
+    await requirePrincipal();
+    return await ctx.db
+      .query("attendance")
+      .withIndex("by_updatedAt", (q) => q.gte("updatedAt", args.since))
+      .collect();
+  },
+});
+
 /** Attendance records for one local calendar date (YYYY-MM-DD). */
 export const listByDate = query({
   args: { date: v.string() },

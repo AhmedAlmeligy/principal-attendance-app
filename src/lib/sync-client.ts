@@ -14,6 +14,7 @@ import {
   putEmployees,
   putSettings,
   deleteAttendanceLocal,
+  deleteAttendanceLocalMany,
   deleteEmployeeLocal,
 } from "./local-db";
 import type {
@@ -23,6 +24,19 @@ import type {
   SyncQueueOp,
 } from "./local-db";
 import type { AttendanceStatus } from "./types";
+
+/** Shape of an attendance row as the backend queries return it. */
+type ServerAttendance = {
+  _id: string;
+  employeeId: string;
+  employeeName: string;
+  date: string;
+  time?: string;
+  status: AttendanceStatus;
+  notes?: string;
+  createdAt: number;
+  updatedAt: number;
+};
 
 /** The authenticated Convex client is registered by the app at startup. */
 let client: ConvexReactClient | null = null;
@@ -38,6 +52,30 @@ function getClient(): ConvexReactClient | null {
 
 let syncing = false;
 let hasSyncedOnce = false;
+/** A trigger arrived mid-run: run once more when the current pass finishes. */
+let syncAgain = false;
+/** The queued trigger asked for a full reconcile (deletions included). */
+let fullRequested = false;
+let syncTimer: ReturnType<typeof setTimeout> | null = null;
+
+const FULL_PULL_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const DELTA_OVERLAP_MS = 10 * 60 * 1000;
+const ATT_LAST_PULL = "att:lastPull";
+const ATT_LATEST = "att:latest";
+const ATT_FULL_AT = "att:fullAt";
+
+/**
+ * Coalesce bursts of sync triggers into one pass. Marking a whole class
+ * present queues dozens of operations; without this each one re-ran a full
+ * sync (pull + rewrite), which is what made the app feel slow on a phone.
+ */
+export function scheduleSync(delayMs = 300): void {
+  if (syncTimer !== null) return;
+  syncTimer = setTimeout(() => {
+    syncTimer = null;
+    void syncNow({ full: fullRequested });
+  }, delayMs);
+}
 const listeners = new Set<() => void>();
 
 export type SyncState = "idle" | "syncing" | "offline" | "error";
@@ -197,8 +235,12 @@ async function ensureFullUpload(c: ConvexReactClient): Promise<void> {
 }
 
 /** Replay the local queue against Convex using the authenticated client. */
-export async function syncNow(): Promise<void> {
-  if (syncing) return;
+export async function syncNow(opts?: { full?: boolean }): Promise<void> {
+  if (syncing) {
+    syncAgain = true;
+    if (opts?.full) fullRequested = true;
+    return;
+  }
   syncing = true;
   try {
     if (typeof navigator !== "undefined" && !navigator.onLine) {
@@ -235,7 +277,8 @@ export async function syncNow(): Promise<void> {
       }
       await dequeueOp(op.id);
     }
-    await pullAll();
+    await pullAll({ full: opts?.full || fullRequested });
+    fullRequested = false;
     const q = await getSyncQueue();
     await setPending(q.length);
     setState("idle");
@@ -250,6 +293,10 @@ export async function syncNow(): Promise<void> {
     syncing = false;
     serverEmpIds = null;
     if (current === "error") scheduleRetry();
+    if (syncAgain) {
+      syncAgain = false;
+      scheduleSync(0);
+    }
   }
 }
 
@@ -610,13 +657,34 @@ async function applyOp(c: ConvexReactClient, op: SyncQueueOp): Promise<void> {
 }
 
 /** Pull fresh employees/attendance/settings and cache them locally. */
-export async function pullAll(): Promise<void> {
+export async function pullAll(opts?: { full?: boolean }): Promise<void> {
   const c = getClient();
   if (!c) return; // local-only build: nothing to pull
   const employees = await c.query(api.employees.list, {});
-  const attendance = await c.query(api.attendance.listAll, {});
   const settings = await c.query(api.settings.get, {});
 
+  // Attendance is pulled incrementally: a tiny `revision` query tells us when
+  // nothing changed, a `listSince` delta fetches what did, and a full
+  // reconcile (which is the only pass that can see deletions) runs on
+  // pull-to-refresh and once a day. Re-downloading the whole history on every
+  // sync is what made the app slower the longer a school used it.
+  const revision = await c.query(api.attendance.revision, {});
+  const metaLatest = (await getMeta<number>(ATT_LATEST)) ?? -1;
+  const lastPullAt = (await getMeta<number>(ATT_LAST_PULL)) ?? 0;
+  const lastFullAt = (await getMeta<number>(ATT_FULL_AT)) ?? 0;
+  const dueForFull =
+    opts?.full === true || Date.now() - lastFullAt > FULL_PULL_INTERVAL_MS;
+  let serverAttendance: ServerAttendance[] = [];
+  if (dueForFull) {
+    serverAttendance = (await c.query(
+      api.attendance.listAll,
+      {},
+    )) as ServerAttendance[];
+  } else if (revision.latest !== metaLatest) {
+    serverAttendance = (await c.query(api.attendance.listSince, {
+      since: Math.max(0, lastPullAt - DELTA_OVERLAP_MS),
+    })) as ServerAttendance[];
+  }
   // Build reverse map: serverId -> localId for employees created offline.
   const localEmployees = await getAllEmployees();
   const serverToLocal = new Map<string, string>();
@@ -657,11 +725,16 @@ export async function pullAll(): Promise<void> {
     }
   }
 
-  const localAttendanceList: LocalAttendance[] = attendance.map((r): LocalAttendance => {
-    const empLocalId = serverToLocal.get(r.employeeId);
-    return {
+  // Merge what the pull returned. Only rows that actually differ are written,
+  // so a routine sync touches (almost) nothing in IndexedDB.
+  const localAtts = await getAllAttendance();
+  const localAttById = new Map(localAtts.map((r) => [r.id, r]));
+  const changedRows: LocalAttendance[] = [];
+  const serverAttIds = new Set<string>();
+  for (const r of serverAttendance) {
+    const row: LocalAttendance = {
       id: r._id,
-      employeeId: empLocalId ?? r.employeeId,
+      employeeId: serverToLocal.get(r.employeeId) ?? r.employeeId,
       employeeName: r.employeeName,
       date: r.date,
       time: r.time,
@@ -671,26 +744,36 @@ export async function pullAll(): Promise<void> {
       updatedAt: r.updatedAt,
       dirty: false,
     };
-  });
+    serverAttIds.add(row.id);
+    const prev = localAttById.get(row.id);
+    const identical =
+      prev !== undefined &&
+      !prev.dirty &&
+      prev.updatedAt === row.updatedAt &&
+      prev.status === row.status &&
+      prev.time === row.time &&
+      prev.notes === row.notes &&
+      prev.employeeId === row.employeeId &&
+      prev.date === row.date &&
+      prev.employeeName === row.employeeName;
+    if (!identical) changedRows.push(row);
+  }
+  if (changedRows.length > 0) await putAttendanceList(changedRows);
 
-  // Keep local dirty records that are newer than server ones (offline edits).
-  const localAtts = await getAllAttendance();
-  const serverAttIds = new Set(localAttendanceList.map((r) => r.id));
-  for (const la of localAtts) {
-    if (la.dirty && !serverAttIds.has(la.id)) {
-      localAttendanceList.push(la);
+  // A full pull is the only pass that can spot deletions (the delta query
+  // cannot return what is gone). Dirty rows still await upload, so keep them.
+  if (dueForFull) {
+    const stale = localAtts.filter(
+      (la) => !la.dirty && !serverAttIds.has(la.id),
+    );
+    if (stale.length > 0) {
+      await deleteAttendanceLocalMany(stale.map((s) => s.id));
     }
   }
 
-  await putAttendanceList(localAttendanceList);
-
-  // Remove local attendance rows the server no longer has. Dirty rows were
-  // merged into localAttendanceList above because they await upload.
-  for (const la of localAtts) {
-    if (!la.dirty && !serverAttIds.has(la.id)) {
-      await deleteAttendanceLocal(la.id);
-    }
-  }
+  await setMeta(ATT_LAST_PULL, Date.now());
+  await setMeta(ATT_LATEST, revision.latest);
+  if (dueForFull) await setMeta(ATT_FULL_AT, Date.now());
 
   if (settings) {
     const localSettings: LocalSettings = {
@@ -721,7 +804,7 @@ export async function markAttendanceDirty(
   }
 }
 
-/** Force a full sync (called by the sync chip). */
+/** Force a full sync (called by the sync chip and pull-to-refresh). */
 export async function manualSync(): Promise<void> {
-  await syncNow();
+  await syncNow({ full: true });
 }

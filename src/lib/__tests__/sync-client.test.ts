@@ -140,7 +140,7 @@ const fakeClient = {
     }
     throw new Error(`Unexpected mutation: ${name}`);
   },
-  async query(fn: unknown) {
+  async query(fn: unknown, args?: Record<string, unknown>) {
     const name =
       (fn as { __fn?: string }).__fn ?? new String(fn).toString();
     if (name.includes("employees") && name.includes("list")) {
@@ -148,6 +148,20 @@ const fakeClient = {
     }
     if (name.includes("attendance") && name.includes("listAll")) {
       return serverAttendance;
+    }
+    if (name.includes("attendance") && name.includes("revision")) {
+      return {
+        latest: serverAttendance.reduce(
+          (max, r) => Math.max(max, (r.updatedAt as number) ?? 0),
+          0,
+        ),
+      };
+    }
+    if (name.includes("attendance") && name.includes("listSince")) {
+      const since = (args?.since as number) ?? 0;
+      return serverAttendance.filter(
+        (r) => ((r.updatedAt as number) ?? 0) >= since,
+      );
     }
     if (name.includes("settings") && name.includes("get")) {
       return serverSettings;
@@ -220,6 +234,8 @@ vi.mock("@/convex/_generated/api", () => {
       },
       attendance: {
         listAll: tag("attendance.listAll"),
+        listSince: tag("attendance.listSince"),
+        revision: tag("attendance.revision"),
         upsert: tag("attendance.upsert"),
         updateRecord: tag("attendance.updateRecord"),
         removeRecord: tag("attendance.removeRecord"),

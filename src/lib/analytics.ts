@@ -103,20 +103,36 @@ export function startAnalytics(): void {
   }
   initialized = true;
 
-  void loadClient().then(() => {
+  // posthog-js is a few hundred kilobytes and its autocapture hooks every tap.
+  // Load it only once the app is idle: startup must never wait on analytics.
+  const whenIdle = (fn: () => void) => {
+    const ric = (
+      window as unknown as {
+        requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      }
+    ).requestIdleCallback;
+    if (typeof ric === "function") ric(fn, { timeout: 4000 });
+    else window.setTimeout(fn, 2500);
+  };
+
+  whenIdle(() => void loadClient().then(() => {
     const ph = posthogClient;
     if (!ph) return;
     ph.init(key, {
       api_host: apiHost,
-      // Pageviews are captured per route in `trackPageview`; autocapture still
-      // records taps on elements so feature adoption is visible.
+      // Route views are captured explicitly in `trackPageview`, and feature
+      // usage via `captureEvent`. Autocapture attached a listener to every
+      // interaction and made the UI feel sluggish on phones, so it is off.
       capture_pageview: false,
-      capture_pageleave: true,
-      autocapture: true,
+      capture_pageleave: false,
+      autocapture: false,
       person_profiles: "identified_only",
       persistence: "localStorage",
       // School records are personal data: never record sessions.
       disable_session_recording: true,
+      // No feature flags or surveys are used: skip the /decide round-trip.
+      advanced_disable_decide: true,
+      disable_surveys: true,
       respect_dnt: true,
     });
     ph.opt_in_capturing();
@@ -129,7 +145,7 @@ export function startAnalytics(): void {
         path,
       });
     }
-  });
+  }));
 }
 
 /** Identify the current device, optionally attaching (or updating) properties. */

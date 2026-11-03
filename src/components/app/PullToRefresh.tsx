@@ -42,7 +42,8 @@ export function PullToRefresh({ children }: { children: ReactNode }) {
     pullRef.current = THRESHOLD;
     setPull(THRESHOLD);
     try {
-      await syncNow();
+      // A manual pull reconciles deletions too, so ask for the full pass.
+      await syncNow({ full: true });
       await refresh();
       setDone(true);
       toast.success("تم تحديث البيانات");

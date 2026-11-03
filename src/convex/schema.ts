@@ -55,7 +55,9 @@ const schema = defineSchema({
   })
     .index("by_employee_date", ["employeeId", "date"])
     .index("by_date", ["date"])
-    .index("by_employee", ["employeeId"]),
+    .index("by_employee", ["employeeId"])
+    // Incremental pulls: "everything changed since X" + a cheap newest stamp.
+    .index("by_updatedAt", ["updatedAt"]),
 
   settings: defineTable({
     schoolName: v.string(),

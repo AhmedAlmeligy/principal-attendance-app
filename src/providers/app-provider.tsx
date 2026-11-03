@@ -12,7 +12,12 @@ import {
   type AttendanceRecord,
   type Employee,
 } from "./data-provider";
-import { onSyncStateChange, getSyncSnapshot, syncNow } from "@/lib/sync-client";
+import {
+  onSyncStateChange,
+  getSyncSnapshot,
+  syncNow,
+  scheduleSync,
+} from "@/lib/sync-client";
 import {
   enqueueOp,
   getSyncQueue,
@@ -138,7 +143,8 @@ function useAppInternal(): AppContextValue {
       const q = await getSyncQueue();
       setPendingOpsState(q.length);
       if (navigator.onLine) {
-        void syncNow();
+        // Coalesce bursts (e.g. "mark all present") into a single sync pass.
+        scheduleSync();
       }
     },
     [],

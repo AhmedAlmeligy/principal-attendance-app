@@ -151,6 +151,18 @@ export async function deleteAttendanceLocal(id: string): Promise<void> {
   await db.delete("attendance", id);
 }
 
+/** Delete many attendance rows in one transaction (reconciliation prunes). */
+export async function deleteAttendanceLocalMany(
+  ids: string[],
+): Promise<void> {
+  if (ids.length === 0) return;
+  const db = await getDB();
+  const tx = db.transaction("attendance", "readwrite");
+  const store = tx.objectStore("attendance");
+  for (const id of ids) store.delete(id);
+  await tx.done;
+}
+
 // ---- settings ----
 export async function getLocalSettings(): Promise<LocalSettings | undefined> {
   const db = await getDB();

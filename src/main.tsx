@@ -319,7 +319,9 @@ createRoot(document.getElementById("root")!).render(
             </Routes>
           </Suspense>
           </BrowserRouter>
-          <Toaster />
+          {/* Toasts sit under the header, not on top of the bottom navigation
+              (sonner uses mobileOffset — not offset — below 600px wide). */}
+          <Toaster position="top-center" offset={76} mobileOffset={76} />
         </ConvexAuthProvider>
       </ThemeProvider>
       </TermsGate>

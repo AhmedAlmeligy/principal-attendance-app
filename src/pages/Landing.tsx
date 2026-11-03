@@ -1,4 +1,3 @@
-import { motion } from "framer-motion";
 import {
   ArrowLeft,
   BarChart3,
@@ -63,13 +62,7 @@ export default function Landing() {
   const navigate = useNavigate();
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.5 }}
-      className="min-h-screen"
-      dir="rtl"
-    >
+    <div className="min-h-screen animate-in fade-in duration-500" dir="rtl">
       <div className="mx-auto w-full max-w-md px-4 pb-16 pt-10">
         {/* Hero */}
         <header className="glass-strong rounded-3xl p-6 text-center">
@@ -113,12 +106,10 @@ export default function Landing() {
             {FEATURES.map((f, i) => {
               const Icon = f.icon;
               return (
-                <motion.article
+                <article
                   key={f.title}
-                  initial={{ opacity: 0, y: 14 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.08 * i, duration: 0.4 }}
-                  className="glass-tile rounded-2xl p-4"
+                  className="glass-tile rounded-2xl p-4 animate-in fade-in slide-in-from-bottom-2 duration-400"
+                  style={{ animationDelay: `${i * 80}ms` }}
                 >
                   <span
                     className={`glass-chip flex size-10 items-center justify-center rounded-2xl ${f.tint}`}
@@ -129,7 +120,7 @@ export default function Landing() {
                   <p className="mt-1 text-xs leading-6 text-muted-foreground">
                     {f.desc}
                   </p>
-                </motion.article>
+                </article>
               );
             })}
           </div>
@@ -179,6 +170,6 @@ export default function Landing() {
           دون إذن مسبق من المؤلف
         </p>
       </div>
-    </motion.div>
+    </div>
   );
 }
