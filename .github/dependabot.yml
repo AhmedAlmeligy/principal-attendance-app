@@ -1,8 +1,9 @@
 version: 2
 updates:
   # Keep application dependencies current (drives Dependabot security alerts).
+  # The npm project lives in a nested directory, not the repository root.
   - package-ecosystem: "npm"
-    directory: "/"
+    directory: "/principal-attendance-app-main"
     schedule:
       interval: "weekly"
       day: "monday"
