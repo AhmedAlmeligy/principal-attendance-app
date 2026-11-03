@@ -28,6 +28,10 @@ export const get = query({
  * retry fail forever and the queue could never drain — a device running an
  * older bundle had no recovery path at all. Returning the existing id means
  * the caller simply maps onto the row that is already there.
+ *
+ * `createdAt` is optional because devices running an older bundle (or
+ * replaying records created before the field existed) never send it —
+ * requiring it wedged their entire sync queue on ArgumentValidationError.
  */
 export const add = mutation({
   args: {
@@ -36,7 +40,7 @@ export const add = mutation({
     position: v.string(),
     category: v.string(),
     notes: v.optional(v.string()),
-    createdAt: v.number(),
+    createdAt: v.optional(v.number()),
     updatedAt: v.number(),
   },
   handler: async (ctx, args) => {
@@ -55,7 +59,9 @@ export const add = mutation({
     return await ctx.db.insert("employees", {
       ...rest,
       notes: args.notes?.trim() || undefined,
-      createdAt,
+      // Older payloads omit createdAt; fall back to updatedAt so the row
+      // still carries a usable creation timestamp.
+      createdAt: createdAt ?? updatedAt,
       updatedAt,
     });
   },
