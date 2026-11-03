@@ -28,6 +28,7 @@ import { BottomNav } from "@/components/app/BottomNav";
 import { BiometricGate } from "@/components/BiometricGate";
 import { AccountGate } from "@/providers/account-gate";
 import { SwipeNavigator } from "@/components/app/SwipeNavigator";
+import { PullToRefresh } from "@/components/app/PullToRefresh";
 import { registerConvexClient } from "@/lib/sync-client";
 import { startAnalytics, trackPageview } from "@/lib/analytics";
 import { TermsGate } from "@/components/TermsGate";
@@ -199,7 +200,9 @@ function AppLayout({ children }: { children: React.ReactNode }) {
     <AppProvider>
       <AccountGate>
         <BiometricGate>
-          <SwipeNavigator>{children}</SwipeNavigator>
+          <SwipeNavigator>
+            <PullToRefresh>{children}</PullToRefresh>
+          </SwipeNavigator>
           <BottomNav />
         </BiometricGate>
       </AccountGate>
