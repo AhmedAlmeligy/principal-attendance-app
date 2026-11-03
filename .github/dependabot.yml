@@ -1,8 +1,9 @@
 version: 2
 updates:
   # Keep application dependencies current (drives Dependabot security alerts).
-  # The npm project lives in a nested directory, not the repository root.
-  - package-ecosystem: "npm"
+  # This project uses Bun (bun.lock), whose ecosystem is "bun" — the npm
+  # updater cannot read bun.lock. The project lives in a nested directory.
+  - package-ecosystem: "bun"
     directory: "/principal-attendance-app-main"
     schedule:
       interval: "weekly"
