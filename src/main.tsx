@@ -328,3 +328,20 @@ createRoot(document.getElementById("root")!).render(
     </RootErrorBoundary>
   </StrictMode>,
 );
+
+// Cache the shell and code after load so the next launch opens instantly (and
+// works offline). Never in dev: a cached dev shell would hide local edits.
+if (import.meta.env.PROD && "serviceWorker" in navigator) {
+  window.addEventListener(
+    "load",
+    () => {
+      const base = import.meta.env.BASE_URL;
+      navigator.serviceWorker
+        .register(`${base}sw.js`, { scope: base })
+        .catch(() => {
+          /* private mode or unsupported: the app works without it */
+        });
+    },
+    { once: true },
+  );
+}

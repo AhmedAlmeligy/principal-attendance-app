@@ -1,7 +1,45 @@
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
+import fs from "node:fs";
 import path from "path";
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
+
+/**
+ * Stamps the service worker with a build id so each deploy gets fresh cache
+ * names — otherwise a stale shell would keep serving old hashed asset paths.
+ *
+ * Also hands the worker the list of lazily-loaded code chunks: without it the
+ * first offline launch mounts the app but the route itself never loads.
+ */
+function serviceWorkerBuildStamp(): Plugin {
+  // Deferred analytics bundle (~335 KB) is not worth precaching; code the app
+  // needs to render a route is small, so a size cap keeps install light.
+  const MAX_PRECACHE_BYTES = 180_000;
+
+  return {
+    name: "hadir-sw-build-stamp",
+    apply: "build",
+    generateBundle(_options, bundle) {
+      const template = path.resolve(__dirname, "src/sw-template.js");
+      if (!fs.existsSync(template)) return;
+
+      const chunks = Object.values(bundle)
+        .filter((entry) => entry.type === "chunk")
+        .filter((chunk) => Buffer.byteLength(chunk.code, "utf8") <= MAX_PRECACHE_BYTES)
+        .map((chunk) => chunk.fileName)
+        .sort();
+
+      // replaceAll: the marker also appears in the file's own comment.
+      const source = fs
+        .readFileSync(template, "utf8")
+        .replaceAll("__SW_BUILD__", String(Date.now()))
+        .replaceAll("__SW_CHUNKS__", JSON.stringify(chunks));
+      // Emitted as part of the bundle (not copied from public/) so the stamped
+      // version is what actually lands in dist/sw.js.
+      this.emitFile({ type: "asset", fileName: "sw.js", source });
+    },
+  };
+}
 
 // https://vite.dev/config/
 // GitHub Pages serves the site from /<repo>/ — derive the base path from the
@@ -10,7 +48,7 @@ const repoName = process.env.GITHUB_REPOSITORY?.split("/")[1];
 
 export default defineConfig({
   base: repoName ? `/${repoName}/` : "/",
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), serviceWorkerBuildStamp()],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

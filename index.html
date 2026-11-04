@@ -10,15 +10,181 @@
     />
     <meta name="theme-color" content="#eef4f8" />
     <title>حاضِر — حضور وانصراف موظفي المدرسة</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+    <!-- The UI font ships with the app: no third-party stylesheet on the
+         critical path, and the Arabic file is fetched in parallel with the JS
+         bundle instead of being discovered after React renders text. -->
     <link
-      href="https://fonts.googleapis.com/css2?family=Noto+Kufi+Arabic:wght@400;500;600;700;800&display=swap"
-      rel="stylesheet"
+      rel="preload"
+      href="./src/assets/fonts/noto-kufi-arabic-arabic.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
     />
+
+    <!--
+      Paint the shell immediately (inline, ~2 kB) so a cold open shows the app
+      instead of a blank screen while the JS bundle downloads. React replaces
+      #root on mount.
+    -->
+    <style>
+      /*
+       * In its own layer on purpose: unlayered CSS outranks the app's
+       * `@layer base`, which would make this boot font/background stick around
+       * after React mounts.
+       */
+      @layer boot {
+      :root {
+        color-scheme: light;
+        --boot-bg: radial-gradient(
+            1100px 520px at 85% -10%,
+            oklch(0.9 0.06 200 / 65%),
+            transparent 60%
+          ),
+          radial-gradient(
+            900px 480px at 8% 8%,
+            oklch(0.92 0.05 260 / 60%),
+            transparent 55%
+          ),
+          radial-gradient(
+            760px 520px at 50% 110%,
+            oklch(0.93 0.05 185 / 55%),
+            transparent 60%
+          ),
+          linear-gradient(
+            175deg,
+            oklch(0.975 0.012 220) 0%,
+            oklch(0.955 0.018 215) 55%,
+            oklch(0.945 0.02 205) 100%
+          );
+        --boot-panel: oklch(1 0 0 / 78%);
+        --boot-border: oklch(1 0 0 / 70%);
+        --boot-text: oklch(0.32 0.045 250);
+        --boot-muted: oklch(0.51 0.035 245);
+        --boot-accent: oklch(0.58 0.115 232);
+      }
+      html.dark {
+        color-scheme: dark;
+        --boot-bg: radial-gradient(
+            1100px 520px at 85% -10%,
+            oklch(0.32 0.06 215 / 55%),
+            transparent 60%
+          ),
+          radial-gradient(
+            900px 480px at 8% 8%,
+            oklch(0.3 0.05 265 / 55%),
+            transparent 55%
+          ),
+          linear-gradient(
+            175deg,
+            oklch(0.19 0.02 250) 0%,
+            oklch(0.17 0.02 250) 100%
+          );
+        --boot-panel: oklch(0.26 0.025 245 / 72%);
+        --boot-border: oklch(1 0 0 / 12%);
+        --boot-text: oklch(0.95 0.008 220);
+        --boot-muted: oklch(0.72 0.02 230);
+        --boot-accent: oklch(0.74 0.1 215);
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        min-height: 100dvh;
+        background: var(--boot-bg);
+        background-attachment: fixed;
+        font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      #boot {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        color: var(--boot-text);
+        padding: 24px;
+        text-align: center;
+      }
+      #boot .b-mark {
+        width: 76px;
+        height: 76px;
+        border-radius: 24px;
+        display: grid;
+        place-items: center;
+        font-size: 34px;
+        font-weight: 700;
+        color: var(--boot-accent);
+        background: var(--boot-panel);
+        border: 1px solid var(--boot-border);
+        box-shadow:
+          0 1px 0 oklch(1 0 0 / 80%) inset,
+          0 14px 34px -16px oklch(0.5 0.06 235 / 40%);
+      }
+      #boot .b-name {
+        font-size: 21px;
+        font-weight: 700;
+        letter-spacing: 0.01em;
+      }
+      #boot .b-sub {
+        font-size: 12px;
+        color: var(--boot-muted);
+      }
+      #boot .b-bar {
+        margin-top: 6px;
+        width: 104px;
+        height: 3px;
+        border-radius: 999px;
+        overflow: hidden;
+        background: oklch(0.62 0.03 235 / 18%);
+      }
+      #boot .b-bar span {
+        display: block;
+        width: 40%;
+        height: 100%;
+        border-radius: 999px;
+        background: var(--boot-accent);
+        animation: boot-slide 1.1s ease-in-out infinite;
+      }
+      @keyframes boot-slide {
+        0% {
+          transform: translateX(-120%);
+        }
+        100% {
+          transform: translateX(320%);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #boot .b-bar span {
+          animation: none;
+          width: 100%;
+        }
+      }
+      }
+    </style>
+    <script>
+      // Apply the saved theme before the first paint so a dark-mode user never
+      // sees a light flash (the app stores it under next-themes' key).
+      try {
+        if (localStorage.getItem("theme") === "dark") {
+          document.documentElement.classList.add("dark");
+        }
+      } catch (e) {}
+    </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div id="boot">
+        <div class="b-mark">ح</div>
+        <div class="b-name">حاضِر</div>
+        <div class="b-sub">حضور وانصراف موظفي المدرسة</div>
+        <div class="b-bar"><span></span></div>
+      </div>
+    </div>
     <script type="module" src="src/main.tsx"></script>
   </body>
 </html>
